@@ -101,6 +101,17 @@ fn world_events(
 
 /// One LEZ indexer EventRecord for a Gated event, in the JSON the RPC returns.
 fn gated_event(program: Bytes32, submission: Bytes32, slot: Bytes32, actor: Bytes32, nonce: u64) -> Value {
+    gated_event_tx(program, [0x42; 32], submission, slot, actor, nonce)
+}
+
+fn gated_event_tx(
+    program: Bytes32,
+    tx: Bytes32,
+    submission: Bytes32,
+    slot: Bytes32,
+    actor: Bytes32,
+    nonce: u64,
+) -> Value {
     let mut data = Vec::with_capacity(112);
     data.extend_from_slice(&submission);
     data.extend_from_slice(&slot);
@@ -110,7 +121,7 @@ fn gated_event(program: Bytes32, submission: Bytes32, slot: Bytes32, actor: Byte
     json!({
         "block_id": 42,
         "tx_index": 0,
-        "tx_hash": hex(&[0x42; 32]),
+        "tx_hash": hex(&tx),
         "program_account_id": b58encode(&program),
         "selector": hex(&gated_selector()),
         "data": b64encode(&data),
@@ -279,6 +290,16 @@ fn a_gated_event_from_another_program_is_refused() {
     let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
     let forged = gated_event([0x99; 32], submission, slot, actor, 0);
     let (reader, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![forged]);
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::NoFact, "{verdict:?}");
+}
+
+#[test]
+fn an_event_from_another_transaction_is_refused_even_with_the_right_emitter() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let other_tx = gated_event_tx(consumer, [0x43; 32], submission, slot, actor, 0);
+    let (reader, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![other_tx]);
     let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
     assert_eq!(verdict.outcome, Outcome::NoFact, "{verdict:?}");
 }

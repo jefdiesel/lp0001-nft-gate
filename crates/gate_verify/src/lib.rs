@@ -74,6 +74,8 @@ pub struct OnchainUse {
 pub struct EventRecord {
     /// The emitting *program* (LEZ sets `TransactionEvent.account_id` to the program).
     pub program_account_id: Bytes32,
+    /// The transaction that emitted it, from the indexer record (hex in JSON).
+    pub tx_hash: Bytes32,
     pub selector: [u8; 8],
     pub data: Vec<u8>,
     pub block_id: Option<u64>,
@@ -223,7 +225,11 @@ pub fn verify_onchain_use(
     };
     for event in events {
         // Any program can emit the selector; the RPC filter is only an optimisation.
-        if event.program_account_id != u.consumer || event.selector != gated_selector() {
+        // The JS reader also checks the record's tx hash; do the same here.
+        if event.tx_hash != u.tx_hash
+            || event.program_account_id != u.consumer
+            || event.selector != gated_selector()
+        {
             continue;
         }
         let Some(gated) = decode_gated_event(&event.data, &u.submission_id) else {
@@ -288,6 +294,7 @@ impl<T: RpcJson> ChainReader for JsonRpcReader<T> {
                 .ok_or("getEvents: no program_account_id")?;
             let selector_text = row.get("selector").and_then(Value::as_str).ok_or("getEvents: no selector")?;
             let data_text = row.get("data").and_then(Value::as_str).ok_or("getEvents: no data")?;
+            let tx_text = row.get("tx_hash").and_then(Value::as_str).ok_or("getEvents: no tx_hash")?;
             let mut selector = [0_u8; 8];
             let bytes = unhex(selector_text)?;
             if bytes.len() != 8 {
@@ -296,6 +303,7 @@ impl<T: RpcJson> ChainReader for JsonRpcReader<T> {
             selector.copy_from_slice(&bytes);
             out.push(EventRecord {
                 program_account_id: b58decode32(program_text)?,
+                tx_hash: unhex32(tx_text)?,
                 selector,
                 data: b64decode(data_text)?,
                 block_id: row.get("block_id").and_then(Value::as_u64),
