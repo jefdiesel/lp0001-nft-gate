@@ -857,6 +857,7 @@ dependencies = [
  "consumer_program",
  "gate_core",
  "gate_interface",
+ "gate_wallet_rules",
  "lee_core",
  "nft_core",
  "nft_program",
@@ -870,6 +871,13 @@ version = "0.1.0"
 dependencies = [
  "gate_core",
  "serde_json",
+]
+
+[[package]]
+name = "gate_wallet_rules"
+version = "0.1.0"
+dependencies = [
+ "gate_core",
 ]
 
 [[package]]

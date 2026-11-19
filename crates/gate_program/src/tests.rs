@@ -417,3 +417,12 @@ fn the_test_nft_program_constant_is_the_default() {
         assert_eq!(NFT_PROGRAM, AccountId::new([0xAA; 32]));
     }
 }
+
+#[test]
+fn the_wallet_rules_publish_bytes_are_the_borsh_publish() {
+    let fact = the_fact(2);
+    assert_eq!(
+        gate_wallet_rules::publish_message(&the_slot(), &fact),
+        msg(&GateInternal::Publish { slot: the_slot(), fact: FactFields::from(fact) })
+    );
+}

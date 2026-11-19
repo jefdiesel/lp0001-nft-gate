@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "gate_wallet_rules"
+description = "LP-0001 wallet rules with no LEZ dependency: request planning, pre-checks, the fail-closed outcome check, and the wallet's error codes. Shared by the CLI client and the wallet module."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gate_core = { workspace = true, features = ["sha2"] }

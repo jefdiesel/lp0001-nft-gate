@@ -11,6 +11,7 @@ members = [
     "crates/consumer_program",
     "crates/gate_verify",
     "crates/gate_wasm",
+    "crates/gate_wallet_rules",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ gate_interface = { path = "crates/gate_interface" }
 gate_program = { path = "crates/gate_program" }
 consumer_program = { path = "crates/consumer_program" }
 gate_verify = { path = "crates/gate_verify" }
+gate_wallet_rules = { path = "crates/gate_wallet_rules" }
 # Pins, as the reference NFT program (lez-programs refactor/lez-v0.4.x @ dea23c2) uses them.
 lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
 nft_core = { git = "https://github.com/logos-blockchain/lez-programs.git", rev = "dea23c22a47c728c9b6f925d0ef1677f99613f09" }

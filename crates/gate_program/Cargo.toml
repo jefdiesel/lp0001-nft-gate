@@ -26,4 +26,5 @@ gate_core = { workspace = true, features = ["sha2"] }
 # The reference NFT program's own handler answers ReadState in the conversation tests.
 nft_program = { workspace = true }
 consumer_program = { workspace = true }
+gate_wallet_rules = { workspace = true }
 serde_json = { workspace = true }
