@@ -2,7 +2,9 @@
 # Sourced by every on-chain test script. Build host (ssh build-host) only.
 # Rules: LP0001-GLM-BRIEF-2026-11-18.md §6. Own folder only; job-a is read-only (its r0vm for
 # simulation, its patched spel, its chain on 3310). Never r0vm on PATH. No real proof here.
-G=$BUILD_ROOT/lp0001/gate
+# G is this run's own folder (repo copy, out/, wallet/, run/, guest-target/). LP0001_GATE_HOME
+# points a second run at a folder of its own; the default is the first run's folder.
+G=${LP0001_GATE_HOME:-$BUILD_ROOT/lp0001/gate}
 J=$BUILD_ROOT/lp0001/job-a
 R=$G/repo
 export LEE_WALLET_HOME_DIR=$G/wallet
