@@ -160,6 +160,23 @@ fn the_context_is_never_taken_from_the_proof_object() {
 }
 
 #[test]
+fn proof_times_and_tx_hash_are_ignored_the_chain_fact_decides() {
+    // Today's behaviour: the wallet's proof object carries times and a tx hash, but the
+    // verifier reads only `gate` and `slot`. Times that disagree with the fact at the RPC
+    // cannot change the verdict; the fact read from the chain decides it.
+    let (reader, mut proof) = world(Some(good_fact()), Some(NB + 5));
+    proof.not_before = NB + 3_600_000; // would be NOT_YET_VALID if the proof object were trusted
+    proof.expires_at = NB + 1; // would be EXPIRED if the proof object were trusted
+    proof.tx_hash = Some([0x99; 32]);
+    let v = verify_offchain(&reader, &pinned(), &proof, &use_());
+    assert_eq!(v.outcome, Outcome::Ok, "{v:?}");
+    let fact = v.fact.expect("the verdict carries the chain fact");
+    assert_eq!(fact.not_before, NB, "the fact's time, not the proof's");
+    assert_eq!(fact.expires_at, NB + 3_600_000, "the fact's time, not the proof's");
+    assert_eq!(*reader.0.calls.borrow(), vec!["getAccountView", "getLastBlockId", "getBlock"]);
+}
+
+#[test]
 fn account_json_shape_is_lee_core_shape() {
     // The exact JSON lee_core's own test prints (account.rs, an_account_serializes_with_its_data_nested).
     let v: Value = serde_json::from_str(
