@@ -101,6 +101,18 @@ test('same proof, both ways: the on-chain context re-checked in app code', async
   assert.equal(v2.name, 'BINDING_MISMATCH');
 });
 
+test('verifyOnchainUse: a wrong actor and a wrong nonce are BINDING_MISMATCH', async () => {
+  // verifyOnchainUse accepts the actor and nonce from its caller (rpc.mjs:70-73); this
+  // records today's behaviour: a value that does not match the fact's context is refused.
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const base = { rpcUrl: 'x', pinned, proof, consumer, submissionId: sub };
+  const wrongActor = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
+  assert.equal((await verifyOnchainUse({ ...base, actor: T(0xa2), nonce: 0n, fetchFn: wrongActor.fetchFn })).name, 'BINDING_MISMATCH');
+  const wrongNonce = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
+  assert.equal((await verifyOnchainUse({ ...base, actor, nonce: 1n, fetchFn: wrongNonce.fetchFn })).name, 'BINDING_MISMATCH');
+});
+
 test('JSON shapes: lee_core account JSON and borsh-base64 block', () => {
   const acct = JSON.parse('{"nonce":7,"data":{"actor_states":{"11111111111111111111111111111111":[9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}}');
   assert.equal(actorStateFromAccount(acct, new Uint8Array(32))[0], 9);
