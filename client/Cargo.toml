@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# gate-cli: the LP-0001 client, on the stock LEZ v0.4.0-rc3 wallet crate (as nft-drive-v2).
+# Its own workspace: the wallet tree never slows the logic workspace's tests.
+[package]
+name = "gate-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[[bin]]
+name = "gate-cli"
+path = "src/main.rs"
+
+[dependencies]
+gate_core = { path = "../crates/gate_core", features = ["sha2"] }
+gate_interface = { path = "../crates/gate_interface" }
+gate_verify = { path = "../crates/gate_verify" }
+gate_wallet_rules = { path = "../crates/gate_wallet_rules" }
+nft_core = { git = "https://github.com/logos-blockchain/lez-programs.git", rev = "dea23c22a47c728c9b6f925d0ef1677f99613f09" }
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3", features = ["host"] }
+lee = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+common = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+wallet = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+system_accounts = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+sequencer_service_rpc = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3", features = ["client"] }
+borsh = { version = "1.5", features = ["derive"] }
+serde_json = "1"
+url = "2"
+anyhow = "1.0.98"
+clap = { version = "4.5.42", features = ["derive", "env"] }
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
+
+[features]
+# In-process proving (RISC0_PROVER=local) needs risc0's prover compiled in. Build it only on
+# the build host, through its lock (it compiles Metal kernels; the laptop has no `metal`).
+prove = ["lee/prove"]
