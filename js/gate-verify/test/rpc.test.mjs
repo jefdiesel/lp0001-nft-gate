@@ -42,6 +42,7 @@ function fakeRpc({ state, now, down = false, events = [] }) {
       assert.deepEqual(req.params, [99]);
       result = blockB64(99, now);
     } else if (req.method === 'getEvents') {
+      assert.equal(req.params[0].program_account_id, g.b58encode(T(0xcc)), 'the consumer is in the filter');
       result = events;
     } else {
       return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'no method' } }) };
@@ -59,7 +60,7 @@ const proof = { gate: pinned.gate, slot: SLOT, not_before: NB, expires_at: NB + 
 const TXHASH = T(0x42);
 
 /** An indexer EventRecord: the LEZ getEvents reply (borsh Gated data, base64). */
-function gatedRecord({ actor, nonce, submissionId, slot = SLOT }) {
+function gatedRecord({ actor, nonce, submissionId, slot = SLOT, program = T(0xcc) }) {
   const data = new Uint8Array(112);
   const dv = new DataView(data.buffer);
   data.set(submissionId, 0);
@@ -71,8 +72,8 @@ function gatedRecord({ actor, nonce, submissionId, slot = SLOT }) {
     block_id: 42,
     tx_index: 0,
     tx_hash: g.hex(TXHASH),
-    // The indexer's "program_account_id" is the emitting account, not the program.
-    program_account_id: g.b58encode(actor),
+    // LEZ sets EventRecord.program_account_id to the emitting program, not the account.
+    program_account_id: g.b58encode(program),
     selector: g.hex(gatedSelector()),
     data: Buffer.from(data).toString('base64'),
   };
@@ -143,6 +144,38 @@ test('verifyOnchainUse: a wrong actor or nonce in the Gated event is BINDING_MIS
     events: [gatedRecord({ actor, nonce: 2n, submissionId: sub })],
   });
   assert.equal((await verifyOnchainUse({ ...base, fetchFn: wrongNonce.fetchFn })).name, 'BINDING_MISMATCH');
+});
+
+test('verifyOnchainUse refuses a Gated event emitted by another program', async () => {
+  // Any program can emit the selector; a forged event must not count as our consumer's Act.
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const r = fakeRpc({
+    state: goodFact(ctx), now: NB + 1n,
+    events: [gatedRecord({ actor, nonce: 0n, submissionId: sub, program: T(0x99) })],
+  });
+  const v = await verifyOnchainUse({
+    rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash: TXHASH, fetchFn: r.fetchFn,
+  });
+  assert.equal(v.name, 'NO_FACT'); // existing code: no event from this consumer for this submission
+});
+
+test('verifyOnchainUse skips a forged event and uses the real one after it', async () => {
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const r = fakeRpc({
+    state: goodFact(ctx), now: NB + 1n,
+    events: [
+      gatedRecord({ actor: T(0xa2), nonce: 9n, submissionId: sub, program: T(0x99) }),
+      gatedRecord({ actor, nonce: 0n, submissionId: sub }),
+    ],
+  });
+  const v = await verifyOnchainUse({
+    rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash: TXHASH, fetchFn: r.fetchFn,
+  });
+  assert.equal(v.name, 'OK');
+  assert.equal(v.gated.actor, g.b58encode(actor));
+  assert.equal(v.gated.nonce, 0n);
 });
 
 test('verifyOnchainUse refuses a missing Gated event and a wrong submission id', async () => {

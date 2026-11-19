@@ -91,20 +91,25 @@ export function decodeGatedData(data, submissionId) {
 /**
  * The Gated event for a transaction, read over the LEZ indexer RPC's getEvents
  * (a point query by tx hash, LEZ v0.4.0-rc3). The record's `program_account_id`
- * is the emitting *account*, not the consumer program, so the filter names the
- * hash and selector only; the submission id is checked inside the event data.
+ * is the emitting program (LEZ sets it to actor.program_account_id), encoded as
+ * a base58 AccountId. A record is accepted only if it is the pinned consumer
+ * program; the submission id is checked inside the event data.
  * Returns { error } or { record: null } when nothing matches.
  */
-export async function readGatedEvent({ rpcUrl, txHash, submissionId, fetchFn }) {
+export async function readGatedEvent({ rpcUrl, txHash, submissionId, programAccountId, fetchFn }) {
   const selector = hex(gatedSelector());
+  const emitter = b58encode(programAccountId);
   let records;
   try {
-    records = await rpcCall(rpcUrl, 'getEvents', [{ tx_hash: hex(txHash), selector }], fetchFn);
+    records = await rpcCall(rpcUrl, 'getEvents', [{ tx_hash: hex(txHash), selector, program_account_id: emitter }], fetchFn);
   } catch (e) {
     return { error: String(e?.message ?? e) };
   }
   if (!Array.isArray(records)) return { error: 'getEvents: not an array' };
   for (const record of records) {
+    // Check every record: any program can emit the Gated selector, so the RPC
+    // filter is only an optimisation. A forged event from another program cannot gate.
+    if (record?.program_account_id !== emitter) continue;
     if (record?.tx_hash !== hex(txHash) || record.selector !== selector) continue;
     const gated = decodeGatedData(b64decode(record.data ?? ''), submissionId);
     if (gated) return { record, gated };
@@ -121,7 +126,7 @@ export async function readGatedEvent({ rpcUrl, txHash, submissionId, fetchFn }) 
  */
 export async function verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consumer, submissionId, txHash, fetchFn }) {
   const eventUrl = eventsUrl ?? rpcUrl;
-  const found = await readGatedEvent({ rpcUrl: eventUrl, txHash, submissionId, fetchFn });
+  const found = await readGatedEvent({ rpcUrl: eventUrl, txHash, submissionId, programAccountId: consumer, fetchFn });
   if ('error' in found) {
     return { name: 'RPC_UNAVAILABLE', code: 7, fact: null, rpc: eventUrl, error: found.error };
   }

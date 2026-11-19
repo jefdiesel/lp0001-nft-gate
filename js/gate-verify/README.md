@@ -13,9 +13,10 @@ server of yours is in the path. It runs the same `check()` as the on-chain consu
   Use the user's own node. Several independent RPCs reduce the trust; they do not remove it.
 - **The LEZ indexer RPC it reads for `verifyOnchainUse`**, for the Act transaction's
   `Gated` event: which transaction gated, the acting account and the nonce in the event.
-  The record's `program_account_id` is the emitting *account*, not the consumer program,
-  so the lookup filters by tx hash and event selector and checks the submission id inside
-  the event data. A lying indexer can substitute a different event; use your own node.
+  The record's `program_account_id` is the **emitting program** (LEZ sets it to
+  `actor.program_account_id`), so the lookup filters by tx hash, event selector and the
+  consumer program id, and the client checks each record's emitter again. A lying indexer
+  can still substitute a different event; use your own node.
 - **The sequencer**: it verified the proof, the commitment root and the nullifiers when it
   included the gate's transaction, and its clock is the time the window is judged by.
 - RISC Zero receipts, the LEZ privacy circuit, SHA-256.
@@ -69,8 +70,10 @@ account and nonce **from that event**, not from its caller. `eventsUrl` defaults
 `rpcUrl`; use a node or proxy that serves both the indexer's `getEvents` and the
 sequencer's `getAccountView`/`getLastBlockId`/`getBlock` methods, or pass the two URLs
 separately. `txHash` is the 32-byte hash of the `Act` transaction. A transaction with no
-`Gated` event for this submission id answers `NO_FACT`; an event for another pass answers
-`BINDING_MISMATCH`. The result includes `gated: { actor, nonce, blockId }` as read.
+`Gated` event for this consumer and submission id answers `NO_FACT`; an event from another
+program or another pass answers `NO_FACT` or `BINDING_MISMATCH` respectively. The emitter
+is checked against the pinned consumer in the RPC filter and again on every record. The
+result includes `gated: { actor, nonce, blockId }` as read.
 
 ## Outcome codes
 
