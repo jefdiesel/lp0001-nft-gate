@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "gate_interface"
+description = "LP-0001 gate and consumer: the borsh messages, states and event every party encodes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Not with `host`: that would reach the guest builds.
+lee_core = { workspace = true }
+borsh = { workspace = true }
+gate_core = { workspace = true }

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# The reference guest build's flags (lez-programs scripts/build-guests.Dockerfile at
+# r0.1.88.0), scoped to the riscv32 guest target only, as Job A's probe build did
+# (LP0001-JOB-A-FINDINGS.md §6b): the Dockerfile's global env would leak into host build
+# scripts, where Apple clang rejects --fatal-warnings. Host builds are untouched.
+[target.riscv32im-risc0-zkvm-elf]
+rustflags = [
+    "-Cpasses=lower-atomic",
+    "-Clink-arg=-Ttext=0x00200800",
+    "-Clink-arg=--fatal-warnings",
+    "-Cpanic=abort",
+    "--cfg",
+    "getrandom_backend=\"custom\"",
+]

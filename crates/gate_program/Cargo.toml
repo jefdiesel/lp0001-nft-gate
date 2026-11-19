@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "gate_program"
+description = "LP-0001 gate program: one private Prove reads the holder's own reference-NFT actor and writes one opaque public fact. Writes no NFT state."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# TEST ONLY, never deployed as the gate: adds `Message::TestProve`, which lets the caller name
+# the NFT program and skips the authorisation assert. Exists for test T4 (hostile program)
+# and as the control of test T3. Built only into guests/gate-unsafe-test.
+unsafe-test-gate = []
+
+[dependencies]
+lee_core = { workspace = true }
+nft_core = { workspace = true }
+borsh = { workspace = true }
+risc0-zkvm = { workspace = true }
+gate_core = { workspace = true }
+gate_interface = { workspace = true }
+
+[dev-dependencies]
+lee_core = { workspace = true, features = ["host"] }
+gate_core = { workspace = true, features = ["sha2"] }
+# The reference NFT program's own handler answers ReadState in the conversation tests.
+nft_program = { workspace = true }
+consumer_program = { workspace = true }
+serde_json = { workspace = true }

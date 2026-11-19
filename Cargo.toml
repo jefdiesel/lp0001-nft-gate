@@ -4,7 +4,12 @@
 # fast tests here never compile the wallet crate or a risc0 guest.
 [workspace]
 resolver = "2"
-members = ["crates/gate_core"]
+members = [
+    "crates/gate_core",
+    "crates/gate_interface",
+    "crates/gate_program",
+    "crates/consumer_program",
+]
 
 [workspace.package]
 version = "0.1.0"

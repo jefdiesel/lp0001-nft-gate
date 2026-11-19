@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# TEST ONLY: the unsafe test gate (caller-named NFT program, no authorisation assert) for tests T3 (control) and T4. NEVER the gate.
+# Deploy only on the throwaway chain, mutable, under a distinct name. See RUN-AFTER-3AM.txt.
+[package]
+name = "lp0001-gate-unsafe-test-guest"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[profile.release]
+debug = 0
+strip = "symbols"
+
+[[bin]]
+name = "lp0001-gate-unsafe-test"
+path = "src/bin/gate_unsafe_test.rs"
+
+[dependencies]
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+risc0-zkvm = { version = "=3.0.5", default-features = false }
+# As the reference nft-guest pins it: ruint 1.18 raised its MSRV past the risc0 guest rustc.
+ruint = { version = "=1.17.0", default-features = false }
+gate_program = { path = "../../crates/gate_program", features = ["unsafe-test-gate"] }

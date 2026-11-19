@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# The reference consumer guest. Build only with LP0001_GATE, LP0001_NFT_PROGRAM,
+# LP0001_COLLECTION, LP0001_SUBMISSION_ID and LP0001_ZONE_ID set (64 hex each), after the
+# gate is deployed. See RUN-AFTER-3AM.txt.
+[package]
+name = "lp0001-consumer-guest"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[profile.release]
+debug = 0
+strip = "symbols"
+
+[[bin]]
+name = "lp0001-consumer"
+path = "src/bin/consumer.rs"
+
+[dependencies]
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+risc0-zkvm = { version = "=3.0.5", default-features = false }
+ruint = { version = "=1.17.0", default-features = false }
+consumer_program = { path = "../../crates/consumer_program" }

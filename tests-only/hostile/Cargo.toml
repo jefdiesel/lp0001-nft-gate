@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# TEST ONLY (T4). See ../README.md.
+[package]
+name = "lp0001_t4_hostile"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.4.0-rc3" }
+nft_core = { git = "https://github.com/logos-blockchain/lez-programs.git", rev = "dea23c22a47c728c9b6f925d0ef1677f99613f09" }
+borsh = { version = "1.5", features = ["derive"] }
+gate_core = { path = "../../crates/gate_core" }

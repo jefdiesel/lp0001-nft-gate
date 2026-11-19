@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "consumer_program"
+description = "LP-0001 reference consumer: gates one action per proof on a gate fact, for one pinned gate, NFT program, collection, submission id and zone."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lee_core = { workspace = true }
+borsh = { workspace = true }
+risc0-zkvm = { workspace = true }
+gate_core = { workspace = true }
+gate_interface = { workspace = true }
+
+[dev-dependencies]
+lee_core = { workspace = true, features = ["host"] }
+gate_core = { workspace = true, features = ["sha2"] }
+serde_json = { workspace = true }
