@@ -28,6 +28,12 @@ expect_refused() {
   if [ "$(cat "$O/$1.rc")" = 0 ]; then VERDICT=FAIL; note "$1 should have been refused";
   elif ! has "$1" "$2"; then VERDICT=FAIL; note "$1 refused, but without '$2'"; fi
 }
+# blocked WHY: a check that cannot run on this chain for a stated reason. The test does not
+# pass (finish_test returns 1) but says why, instead of failing on a symptom.
+blocked() { [ "$VERDICT" = FAIL ] || VERDICT=BLOCKED; note "BLOCKED: $*"; }
+# events_served: the RPC answers getEvents (the LEZ indexer's method) at all
+events_served() { ! curl -s -X POST $RPC -H content-type:application/json \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getEvents","params":[{}]}' | grep -q '"Method not found"'; }
 # expect_text NAME TEXT
 expect_text() { has "$1" "$2" || { VERDICT=FAIL; note "$1 lacks '$2'"; }; }
 # expect_no_text NAME TEXT

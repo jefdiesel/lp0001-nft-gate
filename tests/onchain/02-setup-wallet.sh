@@ -72,7 +72,12 @@ fund_private() { # label amount: sealed from pay, fee paid by gas (a private acc
   run "seal-$1" $W --fee-payer "$GAS" auth-transfer send --from pay --to-npk "$npk" --to-vpk "$vpk" --amount $2 || stop "seal-$1" "$1 is unfunded"
   receive_private $1
 }
-for l in h1 h2 h3 h4 h5 h6; do fund_private $l 60000000; done
+# Every private transaction costs about 5 million in fees and needs a reserve of about 8.4
+# million at send time. h1 pays for its receive, init, print and the Proves of T01, T07, T08
+# (two) and T13 plus T13's send: 60 million ran out at T08's second Prove (run of
+# 2026-11-19, FEE_RESERVE "holds 5613277, the reserve is 8396219").
+fund_private h1 300000000
+for l in h2 h3 h4 h5 h6; do fund_private $l 150000000; done
 for l in actA actB atk; do run "fund-$l" $W auth-transfer send --from pay --to "Public/$(acct $l)" --amount 50000000 || stop "fund-$l" "$l is unfunded"; done
 # 4. the collection: supply 8 (the master prints 7)
 run def $CLI nft new-definition --definition defn --master mstr --name "LP0001 test" --supply 8 --payer pay || stop def "no collection"

@@ -13,6 +13,18 @@ get $OTHER other
 SLOT=$(python3 -I -c "import json;print(json.load(open('$G/run/T01/proof.json'))['slot'])")
 PDA=$(b58hex $(python3 -I -c "import json;print(json.load(open('$G/run/T01/proof.json'))['slot_account'])"))
 GATEH=$(b58hex $(python3 -I -c "import json;print(json.load(open('$GATE_CONFIG'))['gate'])"))
-run windows python3 -I "$R/tools/linkability.py" $O/same1.json $O/same2.json $O/other.json allow=$PDA,$SLOT,$GATEH
+# The fee inbox (8ga8NDaW..., native-balance actor) is a chain-wide constant the wallet adds to
+# every privacy-preserving transaction (lez/wallet lib.rs: Actor::native_balance(fee_inbox)).
+# Actors are sorted by id, so the inbox sits first when the holder's slot account sorts above
+# it and second otherwise: two Proves of one holder then share the windows over "count + inbox"
+# that a holder whose slot account sorts the other way does not (run of 2026-11-19: inbox at
+# offset 5 in same1/same2, 69 in other). It is a public constant, so it is allowed; the check
+# that it really is in all three transactions keeps it from hiding anything else.
+FEE_INBOX=7224eab6e02f8b37d841b163beb8b01470a42e73875ecccfcd72182be1b13b5c
+for f in same1 same2 other; do
+  python3 -I -c "import base64,json,sys;b=base64.b64decode(json.load(open(sys.argv[1]))['result'][0]);sys.exit(bytes.fromhex(sys.argv[2]) not in b)" $O/$f.json $FEE_INBOX \
+    || { VERDICT=FAIL; note "the fee inbox is not in $f: it is not the shared constant this allowance assumes"; }
+done
+run windows python3 -I "$R/tools/linkability.py" $O/same1.json $O/same2.json $O/other.json allow=$PDA,$SLOT,$GATEH,$FEE_INBOX
 expect_text windows "^PASS"
 finish_test

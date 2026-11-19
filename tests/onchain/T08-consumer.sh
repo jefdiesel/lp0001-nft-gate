@@ -20,7 +20,15 @@ expect_text gated "reverted false"
 run decode-act $CLI decode-tx --hash $(tx_of act-A)
 note "Act gas: $(grep '^fee ' $O/decode-act.out)"
 run both-ways $CLI verify --slot $SLOT --tx-hash $(tx_of act-A)
-expect_text both-ways "outcome OK"
+if events_served; then
+  expect_text both-ways "outcome OK"
+elif has both-ways "outcome RPC_UNAVAILABLE"; then
+  # A standalone sequencer (the 3310 kit) has no getEvents: that is the LEZ indexer's method,
+  # and the indexer follows a Bedrock node, which this chain does not post to.
+  blocked "both-ways: $RPC has no getEvents (no LEZ indexer on this chain); verify --tx-hash cannot read the Gated event here (give --events-url on a chain with an indexer)"
+else
+  VERDICT=FAIL; note "both-ways: $RPC has no getEvents, yet verify did not say RPC_UNAVAILABLE"
+fi
 run act-A2 $CLI act --actor actA --slot $SLOT
 expect_refused act-A2 "consumer: BINDING_MISMATCH"
 run act-empty $CLI act --actor actA --slot $(nonce32)
@@ -30,12 +38,18 @@ note "empty slot: $(grep -m1 -oE 'consumer: [A-Z_]+|not admitted|neither a decla
 NOW=$(chain_ms); NB=$(( $(grid $NOW) - 3000000 ))
 run prove-late $CLI prove --holder h1 --payer h1 --onchain-actor actA --test-not-before $NB --test-ttl-class 0 --out $O/late.json
 expect_ok prove-late
-EXP=$(python3 -I -c "import json;print(json.load(open('$O/late.json'))['expires_at'])")
-LSLOT=$(python3 -I -c "import json;print(json.load(open('$O/late.json'))['slot'])")
-note "waiting for chain time >= $EXP (up to 11 min)"
-for i in $(seq 1 140); do [ "$(chain_ms)" -ge "$EXP" ] && break; sleep 5; done
-run act-late $CLI act --actor actA --slot $LSLOT
-[ "$(cat $O/act-late.rc)" != 0 ] || { VERDICT=FAIL; note "a late Act applied"; }
-note "late Act refused at: $(grep -m1 -E 'FAILED|detail|not included|Validity' $O/act-late.out)"
+EXP=$(python3 -I -c "import json;print(json.load(open('$O/late.json'))['expires_at'])" 2>/dev/null)
+LSLOT=$(python3 -I -c "import json;print(json.load(open('$O/late.json'))['slot'])" 2>/dev/null)
+if [ -z "$EXP" ] || [ -z "$LSLOT" ]; then
+  # without the late fact the late Act below would be refused for a missing slot, not for expiry
+  VERDICT=FAIL; note "no late fact (prove-late: $(grep -m1 -E 'FAILED' $O/prove-late.out)): the late Act was not tried"
+else
+  note "waiting for chain time >= $EXP (up to 11 min)"
+  for i in $(seq 1 140); do [ "$(chain_ms)" -ge "$EXP" ] && break; sleep 5; done
+  [ "$(chain_ms)" -ge "$EXP" ] || { VERDICT=FAIL; note "chain time never reached expires_at $EXP: the late Act would not be late"; }
+  run act-late $CLI act --actor actA --slot $LSLOT
+  [ "$(cat $O/act-late.rc)" != 0 ] || { VERDICT=FAIL; note "a late Act applied"; }
+  note "late Act refused at: $(grep -m1 -E 'FAILED|detail|not included|Validity' $O/act-late.out)"
+fi
 # A late Act is refused by the sequencer and has no Gated event to re-check.
 finish_test

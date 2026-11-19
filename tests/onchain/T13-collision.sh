@@ -14,6 +14,13 @@ note "prove exit $(cat $O/prove.rc), send exit $(cat $O/send.rc)"
 note "refusal: $(grep -h -m1 -iE 'nullifier|not included|FAILED' $O/prove.out $O/send.out | head -1)"
 [ "$(cat $O/prove.rc)" = 0 ] && [ "$(cat $O/send.rc)" = 0 ] && { VERDICT=FAIL; note "both applied"; }
 [ "$(cat $O/prove.rc)" != 0 ] && [ "$(cat $O/send.rc)" != 0 ] && { VERDICT=FAIL; note "neither applied (race lost both ways?): rerun"; }
+# The refused one must have lost the race on the nullifier, not failed for another reason (a
+# Prove refused at FEE_RESERVE passed this test on 2026-11-19 without any collision).
+for s in prove send; do
+  if [ "$(cat $O/$s.rc)" != 0 ] && ! grep -qiE 'nullifier|not included|Transaction not found' $O/$s.out; then
+    VERDICT=FAIL; note "$s was refused for another reason than the collision: $(grep -h -m1 -E 'FAILED|Error' $O/$s.out)"
+  fi
+done
 rm -rf $G/wallet-t13
 # the main wallet follows whatever landed
 $CLI wallet account sync-private > /dev/null 2>&1 || true
