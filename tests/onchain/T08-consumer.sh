@@ -14,7 +14,11 @@ run act-B $CLI act --actor actB --slot $SLOT
 expect_refused act-B "consumer: BINDING_MISMATCH"
 run act-A $CLI act --actor actA --slot $SLOT
 expect_ok act-A
-expect_text act-A "consumer nonce 0 -> 1"
+# Once only: A's consumer nonce goes up by exactly one. It is 0 on a fresh consumer; a re-run on
+# the same deployment starts where the last run left it (run of 2026-11-19: 1 -> 2).
+N0=$(grep -oE "^Act by [^ ]+ at consumer nonce [0-9]+" $O/act-A.out | grep -oE "[0-9]+$")
+if [ -z "$N0" ]; then VERDICT=FAIL; note "act-A printed no nonce before the Act";
+else expect_text act-A "consumer nonce $N0 -> $((N0 + 1));"; note "A's consumer nonce before the Act: $N0"; fi
 run gated $CLI gated --tx $(tx_of act-A)
 expect_text gated "reverted false"
 run decode-act $CLI decode-tx --hash $(tx_of act-A)
@@ -35,7 +39,11 @@ run act-empty $CLI act --actor actA --slot $(nonce32)
 [ "$(cat $O/act-empty.rc)" != 0 ] || { VERDICT=FAIL; note "Act on an empty slot applied"; }
 note "empty slot: $(grep -m1 -oE 'consumer: [A-Z_]+|not admitted|neither a declared[^,]*' $O/act-empty.out)"
 # Late Act: a fact whose window closes within 10 minutes, then wait past it.
+# ttl_class 0 is one hour, so the window [NB, NB + 1 h) closes at the next 10-minute mark. If
+# that is under 3 minutes away, the Prove itself may land after it (run of 2026-11-19: 11 s away,
+# "not included"), so close it one mark later (10-13 minutes away).
 NOW=$(chain_ms); NB=$(( $(grid $NOW) - 3000000 ))
+[ $(( NB + 3600000 - NOW )) -ge 180000 ] || NB=$(( NB + 600000 ))
 run prove-late $CLI prove --holder h1 --payer h1 --onchain-actor actA --test-not-before $NB --test-ttl-class 0 --out $O/late.json
 expect_ok prove-late
 EXP=$(python3 -I -c "import json;print(json.load(open('$O/late.json'))['expires_at'])" 2>/dev/null)
@@ -44,8 +52,8 @@ if [ -z "$EXP" ] || [ -z "$LSLOT" ]; then
   # without the late fact the late Act below would be refused for a missing slot, not for expiry
   VERDICT=FAIL; note "no late fact (prove-late: $(grep -m1 -E 'FAILED' $O/prove-late.out)): the late Act was not tried"
 else
-  note "waiting for chain time >= $EXP (up to 11 min)"
-  for i in $(seq 1 140); do [ "$(chain_ms)" -ge "$EXP" ] && break; sleep 5; done
+  note "waiting for chain time >= $EXP (up to 15 min)"
+  for i in $(seq 1 180); do [ "$(chain_ms)" -ge "$EXP" ] && break; sleep 5; done
   [ "$(chain_ms)" -ge "$EXP" ] || { VERDICT=FAIL; note "chain time never reached expires_at $EXP: the late Act would not be late"; }
   run act-late $CLI act --actor actA --slot $LSLOT
   [ "$(cat $O/act-late.rc)" != 0 ] || { VERDICT=FAIL; note "a late Act applied"; }

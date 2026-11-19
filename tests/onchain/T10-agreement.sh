@@ -11,8 +11,10 @@ T8=$G/run/T08
 # applied. B's Act, the empty-slot Act and the late Act are refused and emit no event, so for
 # those three codes the library half is the native one (T00: both verifiers and the consumer
 # run the shared vector file) and this test checks the chain half hard.
-# OK: A's Act applied (nonce 0 -> 1), and the library re-checks it from its event.
-grep -q "consumer nonce 0 -> 1" $T8/act-A.out || { VERDICT=FAIL; note "OK pair: A's Act did not apply"; }
+# OK: A's Act applied (its consumer nonce up by one, N0 -> N0+1; see T08), and the library
+# re-checks it from its event.
+N0=$(grep -oE "^Act by [^ ]+ at consumer nonce [0-9]+" $T8/act-A.out | grep -oE "[0-9]+$")
+[ -n "$N0" ] && grep -q "consumer nonce $N0 -> $((N0 + 1));" $T8/act-A.out || { VERDICT=FAIL; note "OK pair: A's Act did not apply"; }
 if grep -q "outcome OK" $T8/both-ways.out; then :
 elif grep -q "BLOCKED: both-ways" $T8/log.txt; then blocked "OK pair, library half: T8's verify --tx-hash could not read events on this chain (see T08)"
 else VERDICT=FAIL; note "OK pair: the library did not say OK for A's Act"; fi
