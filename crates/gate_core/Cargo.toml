@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "gate_core"
+description = "LP-0001 ownership gate: fact layout, derivations, outcome codes and the one check function. no_std, no LEZ dependency."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# The sha2 crate's SHA-256 as `gate_core::Sha2`, for everything but the risc0 guests.
+sha2 = ["dep:sha2"]
+
+[dependencies]
+sha2 = { workspace = true, optional = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+serde_json = { workspace = true }

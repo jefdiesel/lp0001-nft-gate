@@ -1,0 +1,6 @@
+/target
+**/target
+node_modules/
+*.wasm
+!js/gate-verify/fixtures/*.wasm
+/out/
