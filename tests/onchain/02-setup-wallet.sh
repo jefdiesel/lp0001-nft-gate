@@ -6,8 +6,9 @@
 # copy), h2 (private, initialised holding, owns nothing), h5 (private, fresh, T9), gas
 # (private fee payer, T5).
 #
-# OWNER OK NEEDED for step 2: the only way to fund this wallet is one transfer from the
-# throwaway chain's operator wallet in job-a (a folder this work was given read-only).
+# OWNER OK NEEDED for steps 2 and 3: the only way to fund this wallet is from the throwaway
+# chain's operator wallet in job-a (a folder this work was given read-only): one public transfer
+# to `pay` and one sealed send to `gas`, whose fee one of the operator wallet's private accounts pays.
 set -uo pipefail
 . "$(dirname "$0")/env.sh"
 . "$(dirname "$0")/lib.sh" SETUP
@@ -36,18 +37,42 @@ else
 fi
 run bal-pay $W account get --account-id "Public/$PAY"
 has bal-pay "Balance [1-9]" || stop bal-pay "pay still holds nothing after the funding transfer"
-# 3. sealed funding of each private account (spec §4.3: never --to <label>), then receive it
-fund_private() { # label amount
-  local id keys npk vpk pos
-  id=$(acct $1); keys=$($W account show-keys --account-id "Private/$id" 2>/dev/null)
-  npk=$(echo "$keys" | sed -n 1p); vpk=$(echo "$keys" | sed -n 2p)
-  run "seal-$1" $W auth-transfer send --from pay --to-npk "$npk" --to-vpk "$vpk" --amount $2 || stop "seal-$1" "$1 is unfunded"
+# 3. sealed funding of each private account (spec §4.3: never --to <label>), then receive it.
+# A sealed send is a privacy-preserving transaction, and its fee can only come from a private
+# account of the SIGNING wallet that holds the fee reserve (about 5 million); a public sender
+# cannot pay it ("no private account to pay its fee", run of 2026-11-19 17:15Z). This wallet
+# has no funded private account yet, so `gas` is bootstrapped by the operator wallet, paid by one
+# of the operator wallet's own private accounts (job-a's proven path, run/a2w-23a.sh), and then
+# pays the fee of every other seal from `pay`. A receive is paid by the receiving account from
+# the credit it claims, so it needs no other payer.
+# OWNER OK covers this one sealed send from the operator wallet. Default payer: pask2 (DBFV...),
+# not ph1/ph2 (job-a's real-proof pair).
+OPERATOR_FEE_PAYER=${OPERATOR_FEE_PAYER:-DBFVgupPtnCJrTF9LwQ9FnKyuAXYasL4kzdrz72pefTA}
+keys_of() { $W account show-keys --account-id "Private/$(acct $1)" 2>/dev/null; }
+receive_private() { # label
+  local pos
   run "pending-$1" $W pending list
-  pos=$(grep -oE "^Message [0-9]+" "$O/pending-$1.out" | tail -1 | grep -oE "[0-9]+")
-  [ -n "$pos" ] || { VERDICT=FAIL; note "pending-$1 lists no 'Message N' for the sealed funding of $1"; finish_test; exit 1; }
+  # the credit addressed to this account (a fee refund to another account's alias may be listed too)
+  pos=$(grep -E "^Message [0-9]+: to $(acct $1) " "$O/pending-$1.out" | tail -1 | grep -oE "^Message [0-9]+" | grep -oE "[0-9]+")
+  [ -n "$pos" ] || { VERDICT=FAIL; note "pending-$1 lists no 'Message N: to <$1>' for the sealed funding of $1"; finish_test; exit 1; }
   run "receive-$1" $W pending receive --position "$pos" || stop "receive-$1" "$1 did not receive its funding"
+  run "bal-$1" $W account get --account-id "Private/$(acct $1)"
+  has "bal-$1" "Balance [1-9]" || stop "bal-$1" "$1 holds nothing after its receive"
 }
-for l in h1 h2 h3 h4 h5 h6 gas; do fund_private $l 60000000; done
+keys=$(keys_of gas); npk=$(echo "$keys" | sed -n 1p); vpk=$(echo "$keys" | sed -n 2p)
+[ ${#npk} = 64 ] || { VERDICT=FAIL; note "no npk for gas (got '$npk')"; finish_test; exit 1; }
+run seal-gas env LEE_WALLET_HOME_DIR=$J/chain-home/wallets/operator $J/out/nft-drive-v2 wallet \
+    --fee-payer "$OPERATOR_FEE_PAYER" auth-transfer send --from operator --to-npk "$npk" --to-vpk "$vpk" \
+    --amount 200000000 || stop seal-gas "gas is unfunded"
+receive_private gas
+GAS=$(acct gas)
+fund_private() { # label amount: sealed from pay, fee paid by gas (a private account of this wallet)
+  local keys npk vpk
+  keys=$(keys_of $1); npk=$(echo "$keys" | sed -n 1p); vpk=$(echo "$keys" | sed -n 2p)
+  run "seal-$1" $W --fee-payer "$GAS" auth-transfer send --from pay --to-npk "$npk" --to-vpk "$vpk" --amount $2 || stop "seal-$1" "$1 is unfunded"
+  receive_private $1
+}
+for l in h1 h2 h3 h4 h5 h6; do fund_private $l 60000000; done
 for l in actA actB atk; do run "fund-$l" $W auth-transfer send --from pay --to "Public/$(acct $l)" --amount 50000000 || stop "fund-$l" "$l is unfunded"; done
 # 4. the collection: supply 8 (the master prints 7)
 run def $CLI nft new-definition --definition defn --master mstr --name "LP0001 test" --supply 8 --payer pay || stop def "no collection"
