@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "gate_verify"
+description = "LP-0001 app-code verifier: reads a slot and the chain time over an LEZ RPC and runs gate_core::check. No transaction is sent. Trusts the RPC and the sequencer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gate_core = { workspace = true, features = ["sha2"] }
+serde_json = { workspace = true }

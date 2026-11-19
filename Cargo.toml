@@ -9,6 +9,8 @@ members = [
     "crates/gate_interface",
     "crates/gate_program",
     "crates/consumer_program",
+    "crates/gate_verify",
+    "crates/gate_wasm",
 ]
 
 [workspace.package]
