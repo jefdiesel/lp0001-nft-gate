@@ -50,6 +50,9 @@ struct Cli {
     /// The deployment config (gate, NFT program, image id, consumer, zone, submission id).
     #[arg(long, env = "GATE_CONFIG")]
     config: Option<PathBuf>,
+    /// Optional LEZ indexer RPC for getEvents (defaults to the sequencer RPC).
+    #[arg(long)]
+    events_url: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -207,11 +210,9 @@ struct VerifyArgs {
     purpose: Option<String>,
     #[arg(long, requires = "caller_identity")]
     app_nonce: Option<String>,
-    /// On-chain context: the acting account and its consumer nonce at the time of `Act`.
-    #[arg(long, requires = "nonce")]
-    actor: Option<String>,
-    #[arg(long)]
-    nonce: Option<u64>,
+    /// On-chain re-check: the hash of the Act transaction whose Gated event is read.
+    #[arg(long, conflicts_with = "caller_identity")]
+    tx_hash: Option<String>,
 }
 
 /// The deployment config, written by tests/onchain/01-deploy.sh.
@@ -338,7 +339,7 @@ async fn real_main() -> Result<()> {
         }
         Command::Verify(v) => {
             let cfg = load_config(cli.config.as_ref())?;
-            verify(&mut wallet, &cfg, v, &url).await
+            verify(&mut wallet, &cfg, v, &url, &client, cli.events_url.as_deref()).await
         }
         Command::Gated { tx } => gated(&wallet, &tx).await,
         Command::DecodeTx { hash } => decode_tx(&wallet, &hash).await,
@@ -750,21 +751,36 @@ async fn act(wallet: &mut Wallet, cfg: &GateConfig, actor: &str, slot: &str, pay
     Ok(())
 }
 
-async fn verify(wallet: &mut Wallet, cfg: &GateConfig, v: VerifyArgs, url: &url::Url) -> Result<()> {
+async fn verify(
+    wallet: &mut Wallet,
+    cfg: &GateConfig,
+    v: VerifyArgs,
+    url: &url::Url,
+    client: &GuardedClient,
+    events_url: Option<&str>,
+) -> Result<()> {
+    use gate_verify::ChainReader as _;
+
     let slot = gate_verify::unhex32(&v.slot).map_err(|e| anyhow!(e))?;
     let collection = match &v.collection { Some(c) => resolve(wallet, c)?, None => cfg.collection.ok_or_else(|| anyhow!("give --collection"))? };
     let pinned = gate_verify::Pinned { gate: *cfg.gate.value(), nft_program: *cfg.nft_program.value(), collection: *collection.value(), zone_id: cfg.zone_id };
-    let context = match (&v.caller_identity, &v.actor) {
+    enum Kind { Offchain([u8; 32]), Onchain(gate_verify::OnchainUse) }
+    let kind = match (&v.caller_identity, &v.tx_hash) {
         (Some(id), None) => {
             let nonce = gate_verify::unhex32(v.app_nonce.as_deref().ok_or_else(|| anyhow!("give --app-nonce"))?).map_err(|e| anyhow!(e))?;
-            gate_verify::offchain_context(&pinned, &gate_verify::OffchainUse { caller_identity: id.as_bytes(), purpose: v.purpose.as_deref().unwrap_or("").as_bytes(), nonce })
+            Kind::Offchain(gate_verify::offchain_context(&pinned, &gate_verify::OffchainUse {
+                caller_identity: id.as_bytes(), purpose: v.purpose.as_deref().unwrap_or("").as_bytes(), nonce,
+            }))
         }
-        (None, Some(actor)) => {
+        (None, Some(tx)) => {
             let consumer = cfg.consumer.ok_or_else(|| anyhow!("config: consumer missing"))?;
-            let actor = resolve(wallet, actor)?;
-            gate_verify::onchain_context(&pinned, &gate_verify::OnchainUse { consumer: *consumer.value(), submission_id: cfg.submission_id, actor: *actor.value(), nonce: v.nonce.unwrap_or(0) })
+            Kind::Onchain(gate_verify::OnchainUse {
+                consumer: *consumer.value(),
+                submission_id: cfg.submission_id,
+                tx_hash: gate_verify::unhex32(tx).map_err(|e| anyhow!(e))?,
+            })
         }
-        _ => bail!("give either --caller-identity or --actor/--nonce"),
+        _ => bail!("give either --caller-identity or --tx-hash"),
     };
     // Read first (async), then run the library's synchronous check over what was read.
     let pda = AccountId::new(gate_core::slot_pda::<Sha2>(cfg.gate.value(), &slot));
@@ -774,8 +790,23 @@ async fn verify(wallet: &mut Wallet, cfg: &GateConfig, v: VerifyArgs, url: &url:
         Ok::<_, anyhow::Error>((state, now))
     }
     .await;
-    let reader = Prefetched(read.map_err(|e| e.to_string()));
-    let verdict = gate_verify::verify_context(&reader, &pinned, &slot, &context);
+    let rpc_for_events = events_url.map(|s| url::Url::parse(s)).transpose()?;
+    let events_client = match &rpc_for_events {
+        Some(u) => sequencer_service_rpc::SequencerClientBuilder::default().build(u.as_str())?,
+        None => client.inner.clone(),
+    };
+    let events = match &kind {
+        Kind::Offchain(_) => Ok(Vec::new()),
+        Kind::Onchain(u) => gate_verify::JsonRpcReader(ClientRpc(events_client)).gated_events(&u.tx_hash, &u.consumer),
+    };
+    let reader = VerifyReader { state_time: read.map_err(|e| e.to_string()), events };
+    let proof = gate_verify::ProofObject {
+        gate: pinned.gate, slot, not_before: 0, expires_at: 0, tx_hash: None,
+    };
+    let verdict = match kind {
+        Kind::Offchain(context) => gate_verify::verify_context(&reader, &pinned, &slot, &context),
+        Kind::Onchain(u) => gate_verify::verify_onchain_use(&reader, &pinned, &proof, &u),
+    };
     println!("outcome {} ({})", verdict.outcome.name(), verdict.outcome.plain());
     println!("rpc {url} (trusted for this answer); chain time {:?}", verdict.chain_time_ms);
     if let Some(f) = verdict.fact {
@@ -787,14 +818,40 @@ async fn verify(wallet: &mut Wallet, cfg: &GateConfig, v: VerifyArgs, url: &url:
     Ok(())
 }
 
-struct Prefetched(Result<(Vec<u8>, u64), String>);
+/// A ChainReader for `verify`: the slot state and time are prefetched from the
+/// sequencer through the wallet; Gated events are read from the LEZ indexer RPC.
+struct VerifyReader {
+    state_time: Result<(Vec<u8>, u64), String>,
+    events: Result<Vec<gate_verify::EventRecord>, String>,
+}
 
-impl gate_verify::ChainReader for Prefetched {
+impl gate_verify::ChainReader for VerifyReader {
     fn actor_state(&self, _: &[u8; 32], _: &[u8; 32]) -> Result<Vec<u8>, String> {
-        self.0.as_ref().map(|(s, _)| s.clone()).map_err(Clone::clone)
+        self.state_time.as_ref().map(|(s, _)| s.clone()).map_err(Clone::clone)
     }
     fn latest_timestamp(&self) -> Result<u64, String> {
-        self.0.as_ref().map(|(_, t)| *t).map_err(Clone::clone)
+        self.state_time.as_ref().map(|(_, t)| *t).map_err(Clone::clone)
+    }
+    fn gated_events(&self, _: &[u8; 32], _: &[u8; 32]) -> Result<Vec<gate_verify::EventRecord>, String> {
+        self.events.clone()
+    }
+}
+
+/// A synchronous `RpcJson` over the sequencer's jsonrpsee HTTP client, for the
+/// indexer's `getEvents` method (which the typed sequencer API does not expose).
+struct ClientRpc(jsonrpsee::http_client::HttpClient);
+
+impl gate_verify::RpcJson for ClientRpc {
+    fn call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        use jsonrpsee::core::client::ClientT as _;
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.0
+                    .request::<serde_json::Value, _>(method, jsonrpsee::rpc_params![params])
+                    .await
+            })
+        })
+        .map_err(|e| e.to_string())
     }
 }
 

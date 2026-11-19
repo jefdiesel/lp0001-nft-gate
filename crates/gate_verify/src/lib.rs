@@ -11,7 +11,9 @@
 //! 5. The caller marks its nonce used.
 //!
 //! **What this trusts.** The RPC, fully: for the slot state, the time, and that the gate
-//! account runs the pinned immutable image. A lying RPC can show a fact that does not exist or
+//! account runs the pinned immutable image. `verify_onchain_use` also trusts the LEZ
+//! indexer for the Act transaction's `Gated` event (actor and nonce); it checks the event's
+//! emitter, selector and submission id, but a lying indexer can still substitute an event. A lying RPC can show a fact that does not exist or
 //! hide a newer one; a LEZ block header carries no state root (LEZ v0.4.0-rc3
 //! `lez/common/src/block.rs:51-57`), so nothing here can check it. The sequencer: for having
 //! verified the proof, the commitment root and the nullifiers when it included the
@@ -56,13 +58,63 @@ pub struct OffchainUse<'a> {
     pub nonce: Bytes32,
 }
 
-/// The on-chain context's inputs, as read from a `Gated` event or chosen before `Act`.
+/// The on-chain use's inputs. The acting account and nonce are read from the Act
+/// transaction's `Gated` event, not taken from the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OnchainUse {
+    /// The consumer program that must have emitted the event.
     pub consumer: Bytes32,
     pub submission_id: Bytes32,
+    /// The hash of the `Act` transaction whose event is read.
+    pub tx_hash: Bytes32,
+}
+
+/// One record from the LEZ indexer's `getEvents` reply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventRecord {
+    /// The emitting *program* (LEZ sets `TransactionEvent.account_id` to the program).
+    pub program_account_id: Bytes32,
+    pub selector: [u8; 8],
+    pub data: Vec<u8>,
+    pub block_id: Option<u64>,
+}
+
+/// The fields read from a borsh-encoded `Gated` event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GatedFields {
+    pub slot: Bytes32,
     pub actor: Bytes32,
     pub nonce: u64,
+    pub expires_at: u64,
+}
+
+/// The Gated event selector: sha256("lp0001-consumer::Gated")[..8].
+#[must_use]
+pub fn gated_selector() -> [u8; 8] {
+    let digest = <Sha2 as gate_core::Sha256>::hash(&[b"lp0001-consumer::Gated"]);
+    let mut out = [0_u8; 8];
+    out.copy_from_slice(&digest[..8]);
+    out
+}
+
+/// Decode a Gated event's borsh data: submission id, slot, actor (32 bytes each),
+/// then nonce and expires_at as little-endian u64 (gate_interface's `Gated`).
+/// Returns None unless the submission id is the one this consumer expects.
+#[must_use]
+pub fn decode_gated_event(data: &[u8], submission_id: &Bytes32) -> Option<GatedFields> {
+    if data.len() < 112 || &data[..32] != submission_id {
+        return None;
+    }
+    let mut slot = [0_u8; 32];
+    slot.copy_from_slice(&data[32..64]);
+    let mut actor = [0_u8; 32];
+    actor.copy_from_slice(&data[64..96]);
+    Some(GatedFields {
+        slot,
+        actor,
+        nonce: u64::from_le_bytes(data[96..104].try_into().ok()?),
+        expires_at: u64::from_le_bytes(data[104..112].try_into().ok()?),
+    })
 }
 
 /// A verdict, with what was read.
@@ -84,6 +136,8 @@ pub trait ChainReader {
     fn actor_state(&self, account: &Bytes32, program: &Bytes32) -> Result<Vec<u8>, String>;
     /// The latest block's timestamp, Unix milliseconds.
     fn latest_timestamp(&self) -> Result<u64, String>;
+    /// The Gated events of one transaction hash, from the LEZ indexer RPC.
+    fn gated_events(&self, tx_hash: &Bytes32, consumer: &Bytes32) -> Result<Vec<EventRecord>, String>;
 }
 
 /// Step 1, off chain.
@@ -92,10 +146,16 @@ pub fn offchain_context(pinned: &Pinned, u: &OffchainUse<'_>) -> Bytes32 {
     gate_core::context_offchain::<Sha2>(&pinned.zone_id, &pinned.gate, u.caller_identity, u.purpose, &u.nonce)
 }
 
-/// Step 1, on chain (to re-check an `Act` fact in app code, spec §5 "same proof, both ways").
+/// Step 1, on chain: the context a consumer rebuilt at `actor`/`nonce` (spec §3.1).
 #[must_use]
-pub fn onchain_context(pinned: &Pinned, u: &OnchainUse) -> Bytes32 {
-    gate_core::context_onchain::<Sha2>(&pinned.zone_id, &pinned.gate, &u.consumer, &u.submission_id, &u.actor, u.nonce)
+pub fn onchain_context(
+    pinned: &Pinned,
+    consumer: &Bytes32,
+    submission_id: &Bytes32,
+    actor: &Bytes32,
+    nonce: u64,
+) -> Bytes32 {
+    gate_core::context_onchain::<Sha2>(&pinned.zone_id, &pinned.gate, consumer, submission_id, actor, nonce)
 }
 
 /// Steps 2-4 for a context the app computed itself.
@@ -136,6 +196,48 @@ pub fn verify_offchain(reader: &impl ChainReader, pinned: &Pinned, proof: &Proof
     verify_context(reader, pinned, &proof.slot, &offchain_context(pinned, u))
 }
 
+/// Re-check an on-chain use in app code, without a transaction (spec §5, "same proof,
+/// both ways"). The acting account and nonce come from the Act transaction's Gated
+/// event over the LEZ indexer RPC, never from the caller. A record is accepted only
+/// if its emitter is the pinned consumer, its selector is Gated's, and its embedded
+/// submission id is the one expected. Refusals reuse the same codes as the JS library:
+/// NO_FACT (no such event), BINDING_MISMATCH (another pass), RPC_UNAVAILABLE.
+#[must_use]
+pub fn verify_onchain_use(
+    reader: &impl ChainReader,
+    pinned: &Pinned,
+    proof: &ProofObject,
+    u: &OnchainUse,
+) -> Verdict {
+    let pda = gate_core::slot_pda::<Sha2>(&pinned.gate, &proof.slot);
+    let refusal = |outcome: Outcome, error: &str| Verdict {
+        outcome,
+        fact: None,
+        chain_time_ms: None,
+        slot_account: pda,
+        error: Some(error.to_owned()),
+    };
+    let events = match reader.gated_events(&u.tx_hash, &u.consumer) {
+        Ok(events) => events,
+        Err(error) => return refusal(Outcome::RpcUnavailable, &error),
+    };
+    for event in events {
+        // Any program can emit the selector; the RPC filter is only an optimisation.
+        if event.program_account_id != u.consumer || event.selector != gated_selector() {
+            continue;
+        }
+        let Some(gated) = decode_gated_event(&event.data, &u.submission_id) else {
+            continue;
+        };
+        if gated.slot != proof.slot {
+            return refusal(Outcome::BindingMismatch, "the Gated event names a different pass");
+        }
+        let context = onchain_context(pinned, &u.consumer, &u.submission_id, &gated.actor, gated.nonce);
+        return verify_context(reader, pinned, &proof.slot, &context);
+    }
+    refusal(Outcome::NoFact, "no Gated event from this consumer for this transaction and submission id")
+}
+
 // ---------------------------------------------------------------------------------------------
 // JSON-RPC shapes (LEZ v0.4.0-rc3 `lez/sequencer/service/rpc/src/lib.rs`)
 // ---------------------------------------------------------------------------------------------
@@ -164,6 +266,42 @@ impl<T: RpcJson> ChainReader for JsonRpcReader<T> {
         }
         let b64 = block.as_str().ok_or("getBlock: not a base64 string")?;
         block_timestamp_from_borsh(&b64decode(b64)?)
+    }
+
+    fn gated_events(&self, tx_hash: &Bytes32, consumer: &Bytes32) -> Result<Vec<EventRecord>, String> {
+        // LEZ indexer RPC `getEvents` with a tx-hash point query (LEZ rc3
+        // `lez/indexer/service/rpc/src/lib.rs:113-116`, filter at
+        // `lez/indexer/service/protocol/src/lib.rs:701-707`). Account ids are base58,
+        // hashes and selectors hex, event data base64.
+        let params = json!([{
+            "tx_hash": hex(tx_hash),
+            "program_account_id": b58encode(consumer),
+            "selector": hex(&gated_selector()),
+        }]);
+        let result = self.0.call("getEvents", params)?;
+        let rows = result.as_array().ok_or("getEvents: not an array")?;
+        let mut out = Vec::new();
+        for row in rows {
+            let program_text = row
+                .get("program_account_id")
+                .and_then(Value::as_str)
+                .ok_or("getEvents: no program_account_id")?;
+            let selector_text = row.get("selector").and_then(Value::as_str).ok_or("getEvents: no selector")?;
+            let data_text = row.get("data").and_then(Value::as_str).ok_or("getEvents: no data")?;
+            let mut selector = [0_u8; 8];
+            let bytes = unhex(selector_text)?;
+            if bytes.len() != 8 {
+                return Err("getEvents: selector is not 8 bytes".to_owned());
+            }
+            selector.copy_from_slice(&bytes);
+            out.push(EventRecord {
+                program_account_id: b58decode32(program_text)?,
+                selector,
+                data: b64decode(data_text)?,
+                block_id: row.get("block_id").and_then(Value::as_u64),
+            });
+        }
+        Ok(out)
     }
 }
 
@@ -277,6 +415,18 @@ pub fn b64decode(text: &str) -> Result<Vec<u8>, String> {
 #[must_use]
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Hex to bytes (any even length).
+fn unhex(text: &str) -> Result<Vec<u8>, String> {
+    let t = text.trim().trim_start_matches("0x");
+    if t.len() % 2 != 0 {
+        return Err("odd-length hex".to_owned());
+    }
+    (0..t.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&t[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
 }
 
 /// 64 hex characters to 32 bytes.

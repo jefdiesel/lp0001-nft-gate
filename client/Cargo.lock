@@ -2540,6 +2540,7 @@ dependencies = [
  "gate_interface",
  "gate_verify",
  "gate_wallet_rules",
+ "jsonrpsee",
  "lee",
  "lee_core",
  "nft_core",

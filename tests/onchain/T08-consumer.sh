@@ -4,7 +4,8 @@
 # A's Act applies once (nonce 0 -> 1, the gate PDA read from a public transaction); A's second
 # Act fails BINDING_MISMATCH; an Act on a never-written slot fails (NO_FACT, or LEZ's own
 # refusal, recorded); an Act after expiry is refused by the sequencer. Records the gas.
-# Also "same proof, both ways": the off-chain library on the on-chain context says OK.
+# Also "same proof, both ways": the on-chain use is re-checked from its Gated event.
+# The RPC used by `verify` must serve getEvents (or pass --events-url with an indexer).
 . "$(dirname "$0")/env.sh"; . "$(dirname "$0")/lib.sh" T08
 run prove $CLI prove --holder h1 --payer h1 --onchain-actor actA --out $O/proof.json
 expect_ok prove
@@ -18,7 +19,7 @@ run gated $CLI gated --tx $(tx_of act-A)
 expect_text gated "reverted false"
 run decode-act $CLI decode-tx --hash $(tx_of act-A)
 note "Act gas: $(grep '^fee ' $O/decode-act.out)"
-run both-ways $CLI verify --slot $SLOT --actor actA --nonce 0
+run both-ways $CLI verify --slot $SLOT --tx-hash $(tx_of act-A)
 expect_text both-ways "outcome OK"
 run act-A2 $CLI act --actor actA --slot $SLOT
 expect_refused act-A2 "consumer: BINDING_MISMATCH"
@@ -36,6 +37,5 @@ for i in $(seq 1 140); do [ "$(chain_ms)" -ge "$EXP" ] && break; sleep 5; done
 run act-late $CLI act --actor actA --slot $LSLOT
 [ "$(cat $O/act-late.rc)" != 0 ] || { VERDICT=FAIL; note "a late Act applied"; }
 note "late Act refused at: $(grep -m1 -E 'FAILED|detail|not included|Validity' $O/act-late.out)"
-run v-late $CLI verify --slot $LSLOT --actor actA --nonce 1
-expect_text v-late "outcome EXPIRED"
+# A late Act is refused by the sequencer and has no Gated event to re-check.
 finish_test

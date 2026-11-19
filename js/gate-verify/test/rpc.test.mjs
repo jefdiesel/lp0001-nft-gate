@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as g from '../src/core.mjs';
 import { verifyOffchain, verifyOnchainUse, actorStateFromAccount, blockTimestamp, gatedSelector } from '../src/rpc.mjs';
 
@@ -192,6 +193,19 @@ test('verifyOnchainUse refuses a missing Gated event and a wrong submission id',
   });
   // An event for another submission id is not an event for this one: NO_FACT.
   assert.equal((await verifyOnchainUse({ ...base, fetchFn: wrongSub.fetchFn })).name, 'NO_FACT');
+});
+
+test('shared Gated-event vector: JS agrees with the Rust verifier', async () => {
+  const v = JSON.parse(readFileSync(new URL('../../../vectors/gated-event-vector.json', import.meta.url), 'utf8'));
+  const h = (k) => g.unhex(v[k]);
+  const pinnedV = { gate: h('gate'), nftProgram: h('nft_program'), collection: h('collection'), zoneId: h('zone_id') };
+  const proofV = { gate: h('gate'), slot: h('slot'), not_before: 0n, expires_at: 0n };
+  const r = fakeRpc({ state: Uint8Array.from(v.fact), now: BigInt(v.now_ms), events: [v.event] });
+  const verdict = await verifyOnchainUse({
+    rpcUrl: 'x', pinned: pinnedV, proof: proofV,
+    consumer: h('consumer'), submissionId: h('submission_id'), txHash: h('tx_hash'), fetchFn: r.fetchFn,
+  });
+  assert.equal(verdict.name, v.expected);
 });
 
 test('JSON shapes: lee_core account JSON and borsh-base64 block', () => {

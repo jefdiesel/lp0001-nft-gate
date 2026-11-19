@@ -8,6 +8,7 @@ struct FakeRpc {
     accounts: HashMap<String, Value>,
     last_block: Option<u64>,
     block_b64: Option<String>,
+    events: Vec<Value>,
     calls: RefCell<Vec<String>>,
 }
 
@@ -21,6 +22,7 @@ impl RpcJson for FakeRpc {
             }
             "getLastBlockId" => self.last_block.map(Value::from).ok_or_else(|| "connection refused".to_owned()),
             "getBlock" => Ok(self.block_b64.clone().map(Value::from).unwrap_or(Value::Null)),
+            "getEvents" => Ok(Value::Array(self.events.clone())),
             _ => Err("no such method".to_owned()),
         }
     }
@@ -68,6 +70,14 @@ fn use_() -> OffchainUse<'static> {
 }
 
 fn world(state: Option<Vec<u8>>, now: Option<u64>) -> (JsonRpcReader<FakeRpc>, ProofObject) {
+    world_events(state, now, Vec::new())
+}
+
+fn world_events(
+    state: Option<Vec<u8>>,
+    now: Option<u64>,
+    events: Vec<Value>,
+) -> (JsonRpcReader<FakeRpc>, ProofObject) {
     let p = pinned();
     let secret_slot = [0x51; 32];
     let pda = gate_core::slot_pda::<Sha2>(&p.gate, &secret_slot);
@@ -82,10 +92,40 @@ fn world(state: Option<Vec<u8>>, now: Option<u64>) -> (JsonRpcReader<FakeRpc>, P
         accounts,
         last_block: now.map(|_| 42),
         block_b64: now.map(|t| b64encode(&block_bytes(42, t))),
+        events,
         calls: RefCell::new(Vec::new()),
     };
     let proof = ProofObject { gate: p.gate, slot: secret_slot, not_before: NB, expires_at: NB + 3_600_000, tx_hash: None };
     (JsonRpcReader(rpc), proof)
+}
+
+/// One LEZ indexer EventRecord for a Gated event, in the JSON the RPC returns.
+fn gated_event(program: Bytes32, submission: Bytes32, slot: Bytes32, actor: Bytes32, nonce: u64) -> Value {
+    let mut data = Vec::with_capacity(112);
+    data.extend_from_slice(&submission);
+    data.extend_from_slice(&slot);
+    data.extend_from_slice(&actor);
+    data.extend_from_slice(&nonce.to_le_bytes());
+    data.extend_from_slice(&(NB + 3_600_000).to_le_bytes());
+    json!({
+        "block_id": 42,
+        "tx_index": 0,
+        "tx_hash": hex(&[0x42; 32]),
+        "program_account_id": b58encode(&program),
+        "selector": hex(&gated_selector()),
+        "data": b64encode(&data),
+    })
+}
+
+fn good_onchain_fact(context: Bytes32) -> Vec<u8> {
+    let p = pinned();
+    Fact {
+        binding: gate_core::binding::<Sha2>(&p.nft_program, &p.collection, &context),
+        not_before: NB,
+        expires_at: NB + 3_600_000,
+    }
+    .encode()
+    .to_vec()
 }
 
 fn good_fact() -> Vec<u8> {
@@ -209,4 +249,69 @@ fn base64_round_trips() {
         assert_eq!(b64decode(&b64encode(&data)).unwrap(), data);
     }
     assert_eq!(block_timestamp_from_borsh(&block_bytes(1, 1_763_500_000_123)).unwrap(), 1_763_500_000_123);
+}
+
+fn onchain_case() -> (Pinned, Bytes32, Bytes32, Bytes32, Bytes32, Bytes32) {
+    // pinned, consumer, submission id, tx hash, acting account, slot
+    let p = pinned();
+    let consumer = [0xCC; 32];
+    let submission = [0x5B; 32];
+    let tx_hash = [0x42; 32];
+    let actor = [0xA1; 32];
+    let slot = [0x51; 32];
+    (p, consumer, submission, tx_hash, actor, slot)
+}
+
+#[test]
+fn a_gated_event_from_the_consumer_supplies_actor_and_nonce() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let event = gated_event(consumer, submission, slot, actor, 0);
+    let (reader, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![event]);
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+    assert_eq!(*reader.0.calls.borrow(), vec!["getEvents", "getAccountView", "getLastBlockId", "getBlock"]);
+}
+
+#[test]
+fn a_gated_event_from_another_program_is_refused() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let forged = gated_event([0x99; 32], submission, slot, actor, 0);
+    let (reader, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![forged]);
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::NoFact, "{verdict:?}");
+}
+
+#[test]
+fn a_forged_event_before_the_real_one_is_skipped() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let forged = gated_event([0x99; 32], submission, slot, [0xA2; 32], 9);
+    let real = gated_event(consumer, submission, slot, actor, 0);
+    let (reader, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![forged, real]);
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+}
+
+#[test]
+fn a_shared_gated_event_vector_agrees_with_javascript() {
+    let v: Value = serde_json::from_str(include_str!("../../../vectors/gated-event-vector.json")).unwrap();
+    let unhexv = |k: &str| -> Bytes32 { unhex32(v[k].as_str().unwrap()).unwrap() };
+    let pinned = Pinned {
+        gate: unhexv("gate"),
+        nft_program: unhexv("nft_program"),
+        collection: unhexv("collection"),
+        zone_id: unhexv("zone_id"),
+    };
+    let consumer = unhexv("consumer");
+    let submission = unhexv("submission_id");
+    let tx_hash = unhexv("tx_hash");
+    let slot = unhexv("slot");
+    let fact = v["fact"].as_array().unwrap();
+    let state: Vec<u8> = fact.iter().map(|b| b.as_u64().unwrap() as u8).collect();
+    let event: Value = serde_json::from_value(v["event"].clone()).unwrap();
+    let (reader, proof) = world_events(Some(state), Some(v["now_ms"].as_u64().unwrap()), vec![event]);
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome.name(), v["expected"].as_str().unwrap(), "{verdict:?}");
 }
