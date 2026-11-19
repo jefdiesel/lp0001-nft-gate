@@ -49,7 +49,14 @@ const HEX32 = /^[0-9a-f]{64}$/;
 const MAX_TTL_MS = 86_400_000;
 
 /** Validates a request before it reaches the wallet; throws with a plain message. */
-export function validateRequest({ collection, purpose, nonce, ttl, onchain }) {
+export function validateRequest(request) {
+  // The wallet fills the audience from who the provider says is calling, and picks the
+  // holding and context itself. A dApp that supplies any of these is a caller error:
+  // refuse it plainly instead of silently dropping the field (spec §2.4, §4.2).
+  const wallet_owned = ['audience', 'callerIdentity', 'caller_identity', 'account', 'actor', 'context'];
+  const injected = Object.keys(request ?? {}).find((k) => wallet_owned.includes(k));
+  if (injected) throw new Error(`${injected}: the wallet sets the audience, account and context itself`);
+  const { collection, purpose, nonce, ttl, onchain } = request ?? {};
   if (typeof collection !== 'string' || !B58.test(collection)) throw new Error('collection: an account id in base58');
   if (typeof purpose !== 'string' || purpose.length === 0 || purpose.length > 280) throw new Error('purpose: 1 to 280 characters');
   if (typeof nonce !== 'string' || !HEX32.test(nonce)) throw new Error('nonce: 32 random bytes as 64 lower-case hex');

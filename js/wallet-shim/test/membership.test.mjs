@@ -46,11 +46,16 @@ test('busy is retried; a refusal is final', async () => {
 
 test('bad requests never reach the wallet', () => {
   const base = { collection: COLL, purpose: 'p', nonce: NONCE, ttl: 1000 };
-  // The audience is derived by the wallet from the provider's caller identity, never by
-  // the dApp. validateRequest ignores unknown fields rather than rejecting them: what
-  // matters is that none of them reach the wallet (today's behaviour; see report).
-  const injected = validateRequest({ ...base, audience: 'mine', callerIdentity: 'mine', account: COLL, context: 'mine' });
-  assert.deepEqual(Object.keys(injected).sort(), ['collection', 'nonce', 'purpose', 'ttl']);
+  // The audience, account and context belong to the wallet: an injected one is refused
+  // with a plain error, never forwarded. Unknown harmless fields are still ignored.
+  for (const field of ['audience', 'callerIdentity', 'caller_identity', 'account', 'actor', 'context']) {
+    assert.throws(
+      () => validateRequest({ ...base, [field]: 'mine' }),
+      new RegExp(`${field}: the wallet sets the audience`),
+      `dApp set ${field}`,
+    );
+  }
+  assert.deepEqual(Object.keys(validateRequest({ ...base, extra: 'ignored' })).sort(), ['collection', 'nonce', 'purpose', 'ttl']);
   assert.throws(() => validateRequest({ ...base, collection: 'not-base58!' }), /collection/);
   assert.throws(() => validateRequest({ ...base, nonce: 'AB'.repeat(32) }), /nonce/);
   assert.throws(() => validateRequest({ ...base, nonce: 'ab' }), /nonce/);
