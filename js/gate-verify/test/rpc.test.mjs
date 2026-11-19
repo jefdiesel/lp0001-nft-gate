@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as g from '../src/core.mjs';
-import { verifyOffchain, verifyOnchainUse, actorStateFromAccount, blockTimestamp } from '../src/rpc.mjs';
+import { verifyOffchain, verifyOnchainUse, actorStateFromAccount, blockTimestamp, gatedSelector } from '../src/rpc.mjs';
 
 const T = (b) => new Uint8Array(32).fill(b);
 const NB = 1763500200000n;
@@ -21,8 +21,8 @@ function blockB64(id, ts) {
   return Buffer.from(b).toString('base64');
 }
 
-/** A fake LEZ RPC: answers the three methods the verifier uses, records the calls. */
-function fakeRpc({ state, now, down = false }) {
+/** A fake LEZ RPC: answers the methods the verifier uses, records the calls. */
+function fakeRpc({ state, now, down = false, events = [] }) {
   const calls = [];
   const pda = g.slotPda(pinned.gate, SLOT);
   const fetchFn = async (url, init) => {
@@ -41,6 +41,8 @@ function fakeRpc({ state, now, down = false }) {
     } else if (req.method === 'getBlock') {
       assert.deepEqual(req.params, [99]);
       result = blockB64(99, now);
+    } else if (req.method === 'getEvents') {
+      result = events;
     } else {
       return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'no method' } }) };
     }
@@ -54,6 +56,27 @@ function goodFact(ctx = g.contextOffchain(pinned.zoneId, pinned.gate, use.caller
 }
 
 const proof = { gate: pinned.gate, slot: SLOT, not_before: NB, expires_at: NB + 3600000n };
+const TXHASH = T(0x42);
+
+/** An indexer EventRecord: the LEZ getEvents reply (borsh Gated data, base64). */
+function gatedRecord({ actor, nonce, submissionId, slot = SLOT }) {
+  const data = new Uint8Array(112);
+  const dv = new DataView(data.buffer);
+  data.set(submissionId, 0);
+  data.set(slot, 32);
+  data.set(actor, 64);
+  dv.setBigUint64(96, nonce, true);
+  dv.setBigUint64(104, NB + 3600000n, true);
+  return {
+    block_id: 42,
+    tx_index: 0,
+    tx_hash: g.hex(TXHASH),
+    // The indexer's "program_account_id" is the emitting account, not the program.
+    program_account_id: g.b58encode(actor),
+    selector: g.hex(gatedSelector()),
+    data: Buffer.from(data).toString('base64'),
+  };
+}
 
 test('OK, with only reads, and the RPC named', async () => {
   const { fetchFn, calls } = fakeRpc({ state: goodFact(), now: NB + 5n });
@@ -90,27 +113,52 @@ test('another gate in the proof object is refused without reading', async () => 
   assert.deepEqual(r.calls, []);
 });
 
-test('same proof, both ways: the on-chain context re-checked in app code', async () => {
+test('same proof, both ways: the event supplies the on-chain context', async () => {
+  // Job F: actor and nonce are read from the Gated event, not from the caller.
   const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
   const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
-  const r = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
-  const v = await verifyOnchainUse({ rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, actor, nonce: 0n, fetchFn: r.fetchFn });
+  const base = { rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash: TXHASH };
+  const good = fakeRpc({ state: goodFact(ctx), now: NB + 1n, events: [gatedRecord({ actor, nonce: 0n, submissionId: sub })] });
+  const v = await verifyOnchainUse({ ...base, fetchFn: good.fetchFn });
   assert.equal(v.name, 'OK');
-  const r2 = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
-  const v2 = await verifyOnchainUse({ rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, actor, nonce: 1n, fetchFn: r2.fetchFn });
-  assert.equal(v2.name, 'BINDING_MISMATCH');
+  assert.equal(v.gated.actor, g.b58encode(actor));
+  assert.equal(v.gated.nonce, 0n);
+  assert.ok(good.calls.includes('getEvents'), 'the event is read over the RPC');
+
+  const stale = fakeRpc({ state: goodFact(ctx), now: NB + 1n, events: [gatedRecord({ actor, nonce: 1n, submissionId: sub })] });
+  assert.equal((await verifyOnchainUse({ ...base, fetchFn: stale.fetchFn })).name, 'BINDING_MISMATCH');
 });
 
-test('verifyOnchainUse: a wrong actor and a wrong nonce are BINDING_MISMATCH', async () => {
-  // verifyOnchainUse accepts the actor and nonce from its caller (rpc.mjs:70-73); this
-  // records today's behaviour: a value that does not match the fact's context is refused.
+test('verifyOnchainUse: a wrong actor or nonce in the Gated event is BINDING_MISMATCH', async () => {
   const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
   const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
-  const base = { rpcUrl: 'x', pinned, proof, consumer, submissionId: sub };
-  const wrongActor = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
-  assert.equal((await verifyOnchainUse({ ...base, actor: T(0xa2), nonce: 0n, fetchFn: wrongActor.fetchFn })).name, 'BINDING_MISMATCH');
-  const wrongNonce = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
-  assert.equal((await verifyOnchainUse({ ...base, actor, nonce: 1n, fetchFn: wrongNonce.fetchFn })).name, 'BINDING_MISMATCH');
+  const base = { rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash: TXHASH };
+  const wrongActor = fakeRpc({
+    state: goodFact(ctx), now: NB + 1n,
+    events: [gatedRecord({ actor: T(0xa2), nonce: 0n, submissionId: sub })],
+  });
+  assert.equal((await verifyOnchainUse({ ...base, fetchFn: wrongActor.fetchFn })).name, 'BINDING_MISMATCH');
+  const wrongNonce = fakeRpc({
+    state: goodFact(ctx), now: NB + 1n,
+    events: [gatedRecord({ actor, nonce: 2n, submissionId: sub })],
+  });
+  assert.equal((await verifyOnchainUse({ ...base, fetchFn: wrongNonce.fetchFn })).name, 'BINDING_MISMATCH');
+});
+
+test('verifyOnchainUse refuses a missing Gated event and a wrong submission id', async () => {
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1);
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const base = { rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash: TXHASH };
+  const none = fakeRpc({ state: goodFact(ctx), now: NB + 1n });
+  const missing = await verifyOnchainUse({ ...base, fetchFn: none.fetchFn });
+  assert.equal(missing.name, 'NO_FACT');
+  assert.match(missing.error, /no Gated event/);
+  const wrongSub = fakeRpc({
+    state: goodFact(ctx), now: NB + 1n,
+    events: [gatedRecord({ actor, nonce: 0n, submissionId: T(0x99) })],
+  });
+  // An event for another submission id is not an event for this one: NO_FACT.
+  assert.equal((await verifyOnchainUse({ ...base, fetchFn: wrongSub.fetchFn })).name, 'NO_FACT');
 });
 
 test('JSON shapes: lee_core account JSON and borsh-base64 block', () => {

@@ -11,6 +11,11 @@ server of yours is in the path. It runs the same `check()` as the on-chain consu
   a fact that does not exist or hide a newer one. An LEZ block header has no state root
   (LEZ v0.4.0-rc3 `lez/common/src/block.rs:51-57`), so nothing here can check the RPC.
   Use the user's own node. Several independent RPCs reduce the trust; they do not remove it.
+- **The LEZ indexer RPC it reads for `verifyOnchainUse`**, for the Act transaction's
+  `Gated` event: which transaction gated, the acting account and the nonce in the event.
+  The record's `program_account_id` is the emitting *account*, not the consumer program,
+  so the lookup filters by tx hash and event selector and checks the submission id inside
+  the event data. A lying indexer can substitute a different event; use your own node.
 - **The sequencer**: it verified the proof, the commitment root and the nullifiers when it
   included the gate's transaction, and its clock is the time the window is judged by.
 - RISC Zero receipts, the LEZ privacy circuit, SHA-256.
@@ -55,6 +60,17 @@ show(v.name === 'OK' ? 'Valid' : PLAIN[v.name], `read from ${v.rpc}, which is tr
 
 Accept a fact only for a nonce you issued; re-read the same slot until expiry to see the fact
 is still current. Do not hand out a reusable pass key.
+
+## Re-checking an on-chain use
+
+`verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consumer, submissionId, txHash, fetchFn })`
+reads the Act transaction's `Gated` event over the LEZ indexer RPC and takes the acting
+account and nonce **from that event**, not from its caller. `eventsUrl` defaults to
+`rpcUrl`; use a node or proxy that serves both the indexer's `getEvents` and the
+sequencer's `getAccountView`/`getLastBlockId`/`getBlock` methods, or pass the two URLs
+separately. `txHash` is the 32-byte hash of the `Act` transaction. A transaction with no
+`Gated` event for this submission id answers `NO_FACT`; an event for another pass answers
+`BINDING_MISMATCH`. The result includes `gated: { actor, nonce, blockId }` as read.
 
 ## Outcome codes
 

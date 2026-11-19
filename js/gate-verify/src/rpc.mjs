@@ -7,7 +7,7 @@
 // check the RPC's answer. Use your own node.
 
 import {
-  b58encode, b64decode, binding, check, contextOffchain, contextOnchain, readU64le, slotPda,
+  b58encode, b64decode, binding, check, contextOffchain, contextOnchain, readU64le, sha256, slotPda, hex,
 } from './core.mjs';
 
 /** A JSON-RPC 2.0 call. `fetchFn` defaults to the global fetch. */
@@ -66,10 +66,86 @@ export async function verifyOffchain({ rpcUrl, pinned, proof, use, fetchFn }) {
   return verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
 }
 
-/** Re-check an on-chain use in app code (actor and nonce read from the public Gated event). */
-export async function verifyOnchainUse({ rpcUrl, pinned, proof, consumer, submissionId, actor, nonce, fetchFn }) {
-  const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, actor, nonce);
-  return verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
+/** The event's selector: sha256("lp0001-consumer::Gated")[..8] (LEZ convention). */
+export function gatedSelector() {
+  return sha256(new TextEncoder().encode('lp0001-consumer::Gated')).slice(0, 8);
+}
+
+const eq32 = (a, b) => a.length === 32 && b.length === 32 && a.every((x, i) => x === b[i]);
+
+/**
+ * Decode a Gated event's borsh data: submission id, slot, actor (32 bytes each),
+ * then nonce and expires_at as little-endian u64 (crates/gate_interface/src/lib.rs:87-96).
+ * Returns null unless the submission id is the one this consumer expects.
+ */
+export function decodeGatedData(data, submissionId) {
+  if (data.length < 112 || !eq32(data.slice(0, 32), submissionId)) return null;
+  return {
+    slot: data.slice(32, 64),
+    actor: data.slice(64, 96),
+    nonce: readU64le(data, 96),
+    expiresAt: readU64le(data, 104),
+  };
+}
+
+/**
+ * The Gated event for a transaction, read over the LEZ indexer RPC's getEvents
+ * (a point query by tx hash, LEZ v0.4.0-rc3). The record's `program_account_id`
+ * is the emitting *account*, not the consumer program, so the filter names the
+ * hash and selector only; the submission id is checked inside the event data.
+ * Returns { error } or { record: null } when nothing matches.
+ */
+export async function readGatedEvent({ rpcUrl, txHash, submissionId, fetchFn }) {
+  const selector = hex(gatedSelector());
+  let records;
+  try {
+    records = await rpcCall(rpcUrl, 'getEvents', [{ tx_hash: hex(txHash), selector }], fetchFn);
+  } catch (e) {
+    return { error: String(e?.message ?? e) };
+  }
+  if (!Array.isArray(records)) return { error: 'getEvents: not an array' };
+  for (const record of records) {
+    if (record?.tx_hash !== hex(txHash) || record.selector !== selector) continue;
+    const gated = decodeGatedData(b64decode(record.data ?? ''), submissionId);
+    if (gated) return { record, gated };
+  }
+  return { record: null };
+}
+
+/**
+ * Re-check an on-chain use in app code. The acting account and nonce are READ
+ * from the Act transaction's public Gated event over the LEZ indexer RPC; they
+ * are no longer taken from the caller (Job F). `rpcUrl` serves the slot/time
+ * reads (sequencer RPC); `eventsUrl` defaults to it and serves getEvents
+ * (indexer RPC) — use a node or proxy that serves both if they differ.
+ */
+export async function verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consumer, submissionId, txHash, fetchFn }) {
+  const eventUrl = eventsUrl ?? rpcUrl;
+  const found = await readGatedEvent({ rpcUrl: eventUrl, txHash, submissionId, fetchFn });
+  if ('error' in found) {
+    return { name: 'RPC_UNAVAILABLE', code: 7, fact: null, rpc: eventUrl, error: found.error };
+  }
+  if (!found.record) {
+    // Existing code NO_FACT: this transaction has no Gated event for the submission id.
+    return {
+      name: 'NO_FACT', code: 1, fact: null, rpc: eventUrl,
+      error: 'no Gated event for this transaction and submission id',
+    };
+  }
+  const { gated, record } = found;
+  if (!eq32(gated.slot, proof.slot)) {
+    // Existing code BINDING_MISMATCH: the event is for a different pass.
+    return {
+      name: 'BINDING_MISMATCH', code: 3, fact: null, rpc: eventUrl,
+      error: 'the Gated event names a different pass than the proof object',
+    };
+  }
+  const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, gated.actor, gated.nonce);
+  const verdict = await verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
+  return {
+    ...verdict,
+    gated: { actor: b58encode(gated.actor), nonce: gated.nonce, blockId: record.block_id },
+  };
 }
 
 export async function verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn }) {

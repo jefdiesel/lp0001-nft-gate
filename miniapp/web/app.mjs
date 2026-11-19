@@ -93,17 +93,20 @@ async function gated() {
   try {
     const { pinned, raw } = config();
     const rpc = $('rpc').value;
-    const tx = await rpcCall(rpc, 'getTransaction', [$('acttx').value.trim()]);
+    const txHashText = $('acttx').value.trim();
+    const tx = await rpcCall(rpc, 'getTransaction', [txHashText]);
     const act = gatedFromAct(tx);
     const block = await rpcCall(rpc, 'getBlock', [act.blockId]);
     const v = await verifyOnchainUse({
       rpcUrl: rpc, pinned, proof: { gate: pinned.gate, slot: unhex(act.slot) },
       consumer: b58decode32(raw.consumer), submissionId: unhex(raw.submission_id ?? '00'.repeat(32)),
-      actor: b58decode32(act.actor), nonce: BigInt($('actnonce').value || '0'),
+      txHash: unhex(txHashText),
     });
-    show($('gated'), `<strong>Gated action</strong> by <code>${act.actor}</code> in block ${act.blockId}<br>
+    const gatedActor = v.gated?.actor ?? act.actor;
+    show($('gated'), `<strong>Gated action</strong> by <code>${gatedActor}</code> in block ${act.blockId}<br>
       submission <code>${raw.submission_id}</code>, pass <code>${act.slot}</code><br>
       Same pass checked in this page's code: <strong>${v.name}</strong><br>
+      <small>The acting account and nonce came from the Act transaction's Gated event, read by the verifier.</small><br>
       <small>Whether the Act reverted is in the block's reverted list, not decoded here (see <code>gate-cli gated</code>).</small><br>
       <small>Block ${block ? 'read' : 'missing'} from ${rpc}, trusted for this answer.</small>`, v.name === 'OK');
   } catch (e) {
