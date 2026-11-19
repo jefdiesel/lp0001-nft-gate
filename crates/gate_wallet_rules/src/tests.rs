@@ -30,6 +30,8 @@ fn expected() -> Expected {
         secret: SECRET,
         fee_inbox: INBOX,
         max_fee: 6_000_000,
+        holder_credit: 0,
+        payer_credit: 0,
     }
 }
 
@@ -59,7 +61,11 @@ fn good() -> (ObservedPublic, ObservedPrivate) {
 }
 
 fn fails(public: &ObservedPublic, private: &ObservedPrivate, needle: &str) {
-    let r = outcome_check(&expected(), public, private);
+    fails_with(&expected(), public, private, needle);
+}
+
+fn fails_with(e: &Expected, public: &ObservedPublic, private: &ObservedPrivate, needle: &str) {
+    let r = outcome_check(e, public, private);
     let errs = r.expect_err("must stop the proof");
     assert!(errs.iter().any(|e| e.contains(needle)), "{needle}: {errs:?}");
 }
@@ -239,4 +245,37 @@ fn publish_bytes_layout() {
     assert_eq!(m.len(), 81);
     assert_eq!(m[0], 0);
     assert_eq!(&m[1..33], &e.slot);
+}
+
+#[test]
+fn claimed_pending_credits_may_raise_a_balance_but_no_more() {
+    // The stock wallet claims pending native credits (fee refunds) before the root.
+    let e = Expected { holder_credit: 3_000_000, ..expected() };
+    let (p, mut q) = good();
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 3_000_000 - 5_070_616));
+    assert_eq!(outcome_check(&e, &p, &q), Ok(()));
+    // a refund larger than the fee: the balance rises, within the credits
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 2_000_000));
+    assert_eq!(outcome_check(&e, &p, &q), Ok(()));
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 3_000_001));
+    fails_with(&e, &p, &q, "not a fee");
+    // without credits a rise is refused
+    let (p, mut q) = good();
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 1));
+    fails(&p, &q, "not a fee");
+}
+
+#[test]
+fn with_a_separate_payer_the_holder_may_only_gain_its_credits() {
+    let e = Expected { holder_credit: 1_000, payer_credit: 0, ..expected() };
+    let (p, mut q) = good();
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 1_000));
+    let mut pb = States::new();
+    pb.insert(NATIVE_TOKEN_PROGRAM, bal(9_000_000));
+    let mut pa = pb.clone();
+    pa.insert(NATIVE_TOKEN_PROGRAM, bal(9_000_000 - 5_070_616));
+    q.payer = Some((pb, pa));
+    assert_eq!(outcome_check(&e, &p, &q), Ok(()));
+    q.holder_after.insert(NATIVE_TOKEN_PROGRAM, bal(20_000_000 + 1_001));
+    fails_with(&e, &p, &q, "holder's balance changed");
 }

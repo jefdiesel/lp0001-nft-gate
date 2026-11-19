@@ -9,6 +9,12 @@
 N=$(nonce32)
 run main $CLI prove --holder h1 --payer gas --caller-identity t3 --purpose T3 --app-nonce $N --test-unauthorized-root
 run control $CLI prove --holder h1 --payer gas --caller-identity t3 --purpose T3c --app-nonce $N --test-unauthorized-root --test-unsafe-gate
+if has control UNEXPECTED_OUTCOME; then
+  # The client's outcome rule refused the control, not LEZ: a client-rule verdict, not a design
+  # failure. Rerun the control with the rule off to see what LEZ does, and fix the rule.
+  note "CLIENT-RULE: outcome check refused the control: $(grep -m1 UNEXPECTED_OUTCOME $O/control.out)"
+  run control $CLI prove --holder h1 --payer gas --caller-identity t3 --purpose T3c2 --app-nonce $N --test-unauthorized-root --test-unsafe-gate --test-skip-outcome-check
+fi
 if has main "gate: root not authorized"; then
   expect_refused main "gate: root not authorized"
   expect_ok control

@@ -42,8 +42,13 @@ run def $CLI nft new-definition --definition defn --master mstr --name "LP0001 t
 DEF=$(acct defn)
 for l in h1 h2 h3 h4 h5 h6; do run "init-$l" $CLI nft init-holding --definition $DEF --from $l --payer $l; done
 run init-atk $CLI nft init-holding --definition $DEF --from atk --payer pay
-for l in h1 h3 h4 h6; do run "print-$l" $CLI nft print --from mstr --to $l --payer pay; done
+# A print to a private holding is a proven transaction: its payer must be private (a public
+# payer fails there, F §4 "Accounts key not found"), so the recipient pays.
+for l in h1 h3 h4 h6; do run "print-$l" $CLI nft print --from mstr --to $l --payer $l; done
 run pending-nft $CLI nft pending
 for l in h1 h2 h3 h4 h5 h6 atk; do run "read-$l" $CLI nft read --account $l; done
-note "collection $DEF; h1 h3 h4 h6 should read ...01 (owned), h2 h5 atk ...00"
+for l in h1 h3 h4 h6; do expect_text "read-$l" "owned: true"; done
+for l in h2 h5 atk; do expect_text "read-$l" "owned: false"; done
+expect_ok def
+note "collection $DEF"
 finish_test

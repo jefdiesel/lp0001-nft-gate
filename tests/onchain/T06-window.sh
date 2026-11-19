@@ -20,6 +20,10 @@ done
 expect_refused c-offgrid "gate: not_before is off the grid"
 expect_refused d-badttl "gate: bad ttl_class"
 run e-normal $CLI prove --holder h6 --payer h6 --caller-identity t6 --purpose e --app-nonce $(nonce32)
+if has e-normal UNEXPECTED_OUTCOME; then
+  note "CLIENT-RULE: outcome check refused a normal proof (fix the rule in gate_wallet_rules): $(grep -m1 UNEXPECTED_OUTCOME $O/e-normal.out)"
+  run e-normal $CLI prove --holder h6 --payer h6 --caller-identity t6 --purpose e2 --app-nonce $(nonce32) --test-skip-outcome-check
+fi
 expect_ok e-normal
 TX=$(tx_of e-normal)
 run e-decode $CLI decode-tx --hash $TX

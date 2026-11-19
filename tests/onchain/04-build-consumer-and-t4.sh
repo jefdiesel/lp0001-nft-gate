@@ -5,7 +5,8 @@
 # The consumer's constants need the deployed gate, the collection and the channel id.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
-export PATH=$HOME/.cargo/bin:$HOME/.risc0/bin:$PATH CARGO_BUILD_JOBS=4 TMPDIR=$G/tmp
+export CARGO_BUILD_JOBS=4 TMPDIR=$G/tmp
+command -v r0vm >/dev/null 2>&1 && { echo "STOP: r0vm on PATH"; exit 1; }
 PACK=$J/guest-target/debug/risc0-packager
 cfg() { python3 -I -c "import json;print(json.load(open('$GATE_CONFIG'))['$1'])"; }
 hexid() { python3 -I "$R/tools/b58.py" hex "$1"; }

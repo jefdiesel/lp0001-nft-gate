@@ -178,6 +178,12 @@ pub struct Expected {
     pub fee_inbox: Bytes32,
     /// The most the fee may take from the payer.
     pub max_fee: u128,
+    /// Pending native credits to the holder that the wallet may claim before the root (the
+    /// stock wallet sweeps up to 4, `lez/wallet/src/lib.rs` `sweepable`): its balance may rise
+    /// by at most this.
+    pub holder_credit: u128,
+    /// The same for a separate payer.
+    pub payer_credit: u128,
 }
 
 fn balance(states: &States) -> Option<u128> {
@@ -269,17 +275,23 @@ pub fn outcome_check(e: &Expected, public: &ObservedPublic, private: &ObservedPr
             bad.push(format!("the holder's actor under {} changed", hex(p)));
         }
     }
-    let fee_check = |before: &States, after: &States, who: &str, bad: &mut Vec<String>| match (balance(before), balance(after)) {
-        (Some(b), Some(a)) if a <= b && b - a <= e.max_fee => {}
-        (b, a) => bad.push(format!("{who}'s balance {b:?} -> {a:?} is not a fee of at most {}", e.max_fee)),
+    // The payer's balance: at most the fee lower, at most its claimed credits higher
+    // (b - max_fee <= a <= b + credit). Anyone else's: never lower, at most its credits higher.
+    let fee_check = |before: &States, after: &States, credit: u128, who: &str, bad: &mut Vec<String>| match (balance(before), balance(after)) {
+        (Some(b), Some(a)) if a <= b.saturating_add(credit) && a >= b.saturating_sub(e.max_fee) => {}
+        (b, a) => bad.push(format!(
+            "{who}'s balance {b:?} -> {a:?} is not a fee of at most {} (claimable credits {credit})",
+            e.max_fee
+        )),
     };
     match &private.payer {
-        None => fee_check(hb, ha, "the holder", &mut bad),
+        None => fee_check(hb, ha, e.holder_credit, "the holder", &mut bad),
         Some((pb, pa)) => {
-            if balance(hb) != balance(ha) {
-                bad.push("the holder's balance changed though another account pays".to_owned());
+            match (balance(hb), balance(ha)) {
+                (Some(b), Some(a)) if a >= b && a <= b.saturating_add(e.holder_credit) => {}
+                _ => bad.push("the holder's balance changed though another account pays".to_owned()),
             }
-            fee_check(pb, pa, "the payer", &mut bad);
+            fee_check(pb, pa, e.payer_credit, "the payer", &mut bad);
             let programs: std::collections::BTreeSet<&Bytes32> = pb.keys().chain(pa.keys()).collect();
             for p in programs {
                 if *p != NATIVE_TOKEN_PROGRAM && pb.get(p) != pa.get(p) {

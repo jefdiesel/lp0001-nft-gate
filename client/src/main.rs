@@ -544,7 +544,7 @@ async fn prove(wallet: &mut Wallet, client: &GuardedClient, cfg: &GateConfig, a:
     if a.test_skip_outcome_check {
         println!("check 6 outcome: OFF (TEST ONLY)");
     } else {
-        let expected = gate_wallet_rules::Expected {
+        let mut expected = gate_wallet_rules::Expected {
             gate: *gate.value(),
             nft_program: *cfg.nft_program.value(),
             slot,
@@ -552,7 +552,18 @@ async fn prove(wallet: &mut Wallet, client: &GuardedClient, cfg: &GateConfig, a:
             secret,
             fee_inbox: *system_accounts::fee_inbox_account_id().value(),
             max_fee: cfg.max_fee.max(reserve),
+            holder_credit: 0,
+            payer_credit: 0,
         };
+        // Pending native credits the wallet may claim before the root (refunds of earlier fees).
+        let pending = wallet.owned_pending_messages().await.map_err(|e| anyhow!("RPC_UNREACHABLE: pending messages: {e}"))?;
+        let credit_to = |id: AccountId| -> u128 {
+            pending.iter().filter(|m| m.recipient.account_id() == id).filter_map(|m| m.native_credit()).sum()
+        };
+        let (holder_credit, payer_credit) = (credit_to(holder), if payer == holder { 0 } else { credit_to(payer) });
+        expected.holder_credit = holder_credit;
+        expected.payer_credit = payer_credit;
+        println!("check 6 outcome: claimable credits holder {holder_credit} payer {payer_credit}");
         let key_chain = wallet.storage().key_chain().clone();
         let holder_before = states_of(&holder_account);
         let payer_before = (payer != holder).then(|| states_of(&wallet.get_account_private(payer).unwrap_or_default()));

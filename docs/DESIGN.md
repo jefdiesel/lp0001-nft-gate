@@ -49,7 +49,7 @@ EXPIRED, NOT_AUTHORIZED, RPC_UNAVAILABLE, NOT_A_MEMBER` (`gate_core::Outcome`).
 | Client | `client/` (`gate-cli`) | type-checks; not run |
 | dApp SDK shim | `js/wallet-shim` | tested |
 | Mini-app | `miniapp/` | logic tested; not deployed |
-| Chain tests T0–T13 | `tests/onchain/` | T0 run; T1–T13 written, not run |
+| Chain tests T0–T14 | `tests/onchain/` | T0 run; T1–T14 written, not run |
 
 ## Limits, in plain words (spec L1–L10)
 
@@ -148,3 +148,12 @@ No trusted setup of ours.
    program, no authorisation assert) and the T4 hostile program exist only for T3's control and
    T4, are separate deployments, and cannot write the real gate's slots (`Publish` is accepted
    only from the gate's own program).
+9. **Block timestamps can go backwards by construction.** The sequencer stamps each block with
+   its wall clock, `chrono::Utc::now()` (`lez/sequencer/core/src/lib.rs:2053-2054`), with no
+   guard against a value below the previous block's; the clock program checks only the block id
+   (`lez/programs/clock/src/main.rs:24-29`). A step back (an NTP correction) would let a late
+   transaction land inside a window it had left. T14 scans the 3310 chain's headers for it.
+10. **Pending credits change balances inside a Prove.** The stock wallet claims up to four
+   pending native credits (earlier fee refunds) before the root (`lez/wallet/src/lib.rs`,
+   `sweepable` and `MAX_SWEPT_CLAIMS`), so the holder's or payer's balance can rise in a correct
+   proof. The outcome check allows a rise of at most the claimable credits it read just before.
