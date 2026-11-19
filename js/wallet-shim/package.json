@@ -1,0 +1,9 @@
+{
+  "name": "@lez-nft-gate/wallet-shim",
+  "version": "0.1.0",
+  "description": "LP-0001 `membership-proof` capability, dApp side: request a private membership proof from the wallet's provider module, follow its status, receive only the proof object.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": { ".": "./src/membership.mjs" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

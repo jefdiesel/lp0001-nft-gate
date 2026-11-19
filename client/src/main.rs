@@ -139,7 +139,8 @@ struct ProveArgs {
     /// The private account holding the NFT (label or id).
     #[arg(long)]
     holder: String,
-    /// The private account paying the fee. Always explicit (spec §4.3).
+    /// The private account paying the fee. Always explicit (spec §4.3). OWNER DECISION Q5,
+    /// default: the holding pays for itself; a separate gas account only once T5 passes.
     #[arg(long)]
     payer: String,
     /// The collection (NFT definition id). Default: the config's.
@@ -160,6 +161,7 @@ struct ProveArgs {
     app_nonce: Option<String>,
     // ---- on-chain context ----
     /// On-chain: the public account that will send `Act` (its consumer nonce is read here).
+    /// OWNER DECISION Q3, default: a public account the user picks inside the wallet.
     #[arg(long)]
     onchain_actor: Option<String>,
     /// Write the proof object (JSON) here.

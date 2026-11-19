@@ -130,6 +130,9 @@ impl Sha256 for Sha2 {
 
 /// `slot = sha256("lp0001-gate/v1/slot" ‖ secret)`. The secret lives only in the holder's
 /// shielded gate state.
+///
+/// OWNER DECISION Q4 (spec §9.4), default: one slot per holding. Keying per holding and app
+/// would add the audience here; it must be decided before deploy.
 #[must_use]
 pub fn slot<H: Sha256>(secret: &Bytes32) -> Bytes32 {
     H::hash(&[DOMAIN_SLOT, secret])
