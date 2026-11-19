@@ -1,0 +1,14 @@
+{
+  "name": "members_door_ui",
+  "display_name": "Members' door",
+  "version": "0.1.0",
+  "type": "ui_qml",
+  "interface": "universal",
+  "category": "social",
+  "description": "LP-0001 token-gating reference app: prove you hold an NFT of a collection without showing which NFT or which account. Uses only the membership-proof capability; never asks for account access. SKELETON, not built or published.",
+  "main": "members_door_ui_plugin",
+  "view": "qml/Main.qml",
+  "dependencies": [{ "name": "names", "version": ">=0.18.0" }],
+  "provides": [],
+  "uses": []
+}

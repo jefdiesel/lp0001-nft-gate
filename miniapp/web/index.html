@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Members' door</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #dddad3; --ok: #1f7a4a; --bad: #a33a2a; --accent: #2b4a8a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe7; --muted: #a09e98; --line: #34332f; --ok: #5fc18c; --bad: #e07a68; --accent: #8fa9e3; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; } h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+  .sub, small, .muted { color: var(--muted); }
+  section { border-top: 1px solid var(--line); padding-top: 8px; }
+  button { font: inherit; padding: 8px 14px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 6px; cursor: pointer; margin: 4px 8px 4px 0; }
+  button:disabled { opacity: .5; cursor: progress; }
+  input, textarea { font: inherit; width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 4px; }
+  textarea { min-height: 6em; font-family: ui-monospace, monospace; font-size: 13px; }
+  .result { padding: 10px 12px; border-left: 3px solid var(--line); margin: 10px 0; }
+  .result.ok { border-color: var(--ok); } .result.bad { border-color: var(--bad); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+  code { font-size: 13px; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Members' door</h1>
+  <p class="sub">Prove you hold an NFT of the collection without showing which NFT or which account. Reference app for LP-0001; nothing here asks for account access.</p>
+
+  <h2>Settings</h2>
+  <label>LEZ RPC (trusted for every answer below; use your own node) <input id="rpc" value="http://127.0.0.1:3310"></label>
+  <label>Deployment config (gate-config.json) <textarea id="config" placeholder='{"gate":"…","nft_program":"…","collection":"…","zone_id":"…","consumer":"…","submission_id":"…"}'></textarea></label>
+  <label>This app's name as the wallet sees it (the audience) <input id="caller" value="members_door_ui"></label>
+
+  <section>
+    <h2>1. Request</h2>
+    <p>Collection: <strong id="collname">from the config</strong></p>
+    <button id="btn-off">Check in this app</button>
+    <button id="btn-on">Sign the members' book on chain</button>
+    <p id="progress" class="muted" aria-live="polite"></p>
+  </section>
+
+  <section>
+    <h2>2. Off-chain use</h2>
+    <p class="muted">The wallet's proof object arrives here. Without a wallet (a plain browser), paste one from <code>gate-cli prove --out</code> with the nonce it was made for.</p>
+    <label>Proof object <textarea id="proof"></textarea></label>
+    <label>Nonce this app issued (64 hex) <input id="nonce"></label>
+    <label>Purpose <input id="purpose" value="Check in this app"></label>
+    <button id="btn-verify">Verify here</button>
+    <div id="verdict" class="result" hidden></div>
+  </section>
+
+  <section>
+    <h2>3. On-chain use</h2>
+    <p class="muted">After the wallet sends <code>Act</code>, paste its transaction hash to show the gated action, then check the same pass in this page's own code.</p>
+    <label>Act transaction hash <input id="acttx"></label>
+    <label>Acting account's nonce at the time of Act <input id="actnonce" value="0"></label>
+    <button id="btn-gated">Show the gated action</button>
+    <div id="gated" class="result" hidden></div>
+  </section>
+</main>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

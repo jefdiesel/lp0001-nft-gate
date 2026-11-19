@@ -1,0 +1,9 @@
+{
+  "name": "@lez-nft-gate/members-door",
+  "version": "0.1.0",
+  "description": "LP-0001 token-gating mini-app (working name: Members' door): static page and Basecamp skeleton. Not deployed.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
