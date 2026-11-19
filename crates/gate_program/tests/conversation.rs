@@ -373,3 +373,31 @@ fn the_gate_refuses_to_be_read_where_a_holder_lives() {
     let err = c.send(Actor::new(B, B), &[B], vec![]).unwrap_err();
     assert_eq!(err, "gate: a holder's state is not readable");
 }
+
+#[test]
+fn an_identical_prove_a_second_time_is_refused_by_the_gate_for_a_second_slot_secret() {
+    // Spec §2.8.1 is a chain-level refusal: the same private transaction's nullifier is
+    // already seen in LEZ state. This native stand-in has no nullifier set, so it cannot
+    // show point 1. It shows what the gate does today with the same Prove bytes twice:
+    // the first proof stores the secret; the second carries it again and is refused by
+    // §2.6.1's "the slot secret is already set" rule, not by a nullifier check.
+    // The point-4 rewrite (a second proof with slot_secret None) has its own test above.
+    let mut c = Chain::new();
+    with_holder(&mut c, H1, copy(true));
+    let secret = [1; 32];
+    let message = prove_msg(offchain_context(1), NB, 0, Some(secret));
+    c.send(Actor::new(H1, GATE), &[H1], message.clone()).expect("first proof");
+    let fact_at = slot_pda(&secret);
+    let fact = c.get(fact_at);
+    assert_eq!(gate_core::check(&fact, &binding(&offchain_context(1)), Some(NB + 1)), Outcome::Ok);
+
+    let err = c.send(Actor::new(H1, GATE), &[H1], message).unwrap_err();
+    assert_eq!(err, "gate: the slot secret is already set");
+    // Nothing changed: the fact, the idle holder and the NFT actor are byte-identical.
+    assert_eq!(c.get(fact_at), fact);
+    assert_eq!(
+        gate_core::GateState::decode(&c.get(Actor::new(H1, GATE))),
+        Ok(gate_core::GateState::Holder { secret, pending: None })
+    );
+    assert_eq!(c.get(Actor::new(H1, NFT)), copy(true));
+}
