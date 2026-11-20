@@ -90,6 +90,34 @@ pub struct GatedFields {
     pub expires_at: u64,
 }
 
+/// The Act transaction as decoded from `getTransaction` by the reader (no indexer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActTransaction {
+    pub actor: Bytes32,
+    pub consumer: Bytes32,
+    pub slot: Bytes32,
+    /// Whether the transaction was included and not reverted.
+    pub applied: bool,
+    pub block_id: Option<u64>,
+}
+
+/// A consumer's state on A, as read from `getAccountView` (borsh ConsumerState).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConsumerStateView {
+    pub nonce: u64,
+}
+
+/// Decode the borsh `ConsumerState { nonce: u64, pending: Option<[u8;32]> }`.
+#[must_use]
+pub fn decode_consumer_state(bytes: &[u8]) -> Option<ConsumerStateView> {
+    if bytes.len() < 8 {
+        return None;
+    }
+    Some(ConsumerStateView {
+        nonce: u64::from_le_bytes(bytes[..8].try_into().ok()?),
+    })
+}
+
 /// The Gated event selector: sha256("lp0001-consumer::Gated")[..8].
 #[must_use]
 pub fn gated_selector() -> [u8; 8] {
@@ -140,6 +168,9 @@ pub trait ChainReader {
     fn latest_timestamp(&self) -> Result<u64, String>;
     /// The Gated events of one transaction hash, from the LEZ indexer RPC.
     fn gated_events(&self, tx_hash: &Bytes32, consumer: &Bytes32) -> Result<Vec<EventRecord>, String>;
+    /// An Act transaction decoded from the sequencer's `getTransaction` (no indexer).
+    /// `None` when it was not included; `applied` is false when the block reverted it.
+    fn act_transaction(&self, tx_hash: &Bytes32) -> Result<Option<ActTransaction>, String>;
 }
 
 /// Step 1, off chain.
@@ -198,6 +229,90 @@ pub fn verify_offchain(reader: &impl ChainReader, pinned: &Pinned, proof: &Proof
     verify_context(reader, pinned, &proof.slot, &offchain_context(pinned, u))
 }
 
+fn refusal_at(pda: Bytes32, outcome: Outcome, error: &str) -> Verdict {
+    Verdict {
+        outcome,
+        fact: None,
+        chain_time_ms: None,
+        slot_account: pda,
+        error: Some(error.to_owned()),
+    }
+}
+
+/// Re-check an on-chain use with no indexer: the Act transaction gives actor, consumer and
+/// slot; the public fact's binding commits to `context(A, N)`, so N is found by trying the
+/// nonces below A's current consumer nonce. The current state proves an Act happened (the
+/// nonce only moves on `Outcome::Ok`). This cannot tell which of several Acts by A produced
+/// the current pass; it shows that A acted and that a live pass exists (Job J paper).
+#[must_use]
+pub fn verify_onchain_tx(
+    reader: &impl ChainReader,
+    pinned: &Pinned,
+    proof: &ProofObject,
+    u: &OnchainUse,
+) -> Verdict {
+    let pda = gate_core::slot_pda::<Sha2>(&pinned.gate, &proof.slot);
+    let act = match reader.act_transaction(&u.tx_hash) {
+        Ok(Some(act)) => act,
+        Ok(None) => return refusal_at(pda, Outcome::NoFact, "the Act transaction was not included"),
+        Err(error) => return refusal_at(pda, Outcome::RpcUnavailable, &error),
+    };
+    if !act.applied {
+        return refusal_at(pda, Outcome::NoFact, "the Act transaction reverted");
+    }
+    if act.consumer != u.consumer {
+        return refusal_at(pda, Outcome::BindingMismatch, "another consumer's Act");
+    }
+    if act.slot != proof.slot {
+        return refusal_at(pda, Outcome::BindingMismatch, "the Act names a different pass");
+    }
+    let state = match reader.actor_state(&act.actor, &u.consumer) {
+        Ok(bytes) => bytes,
+        Err(error) => return refusal_at(pda, Outcome::RpcUnavailable, &error),
+    };
+    let current = match decode_consumer_state(&state) {
+        Some(s) => s.nonce,
+        None => return refusal_at(pda, Outcome::Malformed, "the consumer state does not decode"),
+    };
+    let fact_bytes = match reader.actor_state(&pda, &pinned.gate) {
+        Ok(bytes) => bytes,
+        Err(error) => return refusal_at(pda, Outcome::RpcUnavailable, &error),
+    };
+    let fact = match Fact::decode(&fact_bytes) {
+        Ok(f) => f,
+        Err(_) => return refusal_at(pda, Outcome::NoFact, "the slot has no membership fact"),
+    };
+    // Find the nonce whose context the fact was written for. The Act's context used the
+    // consumer's nonce at the time, so N < current whenever an Act has happened since.
+    let mut nonce = None;
+    for n in 0..current {
+        let context = onchain_context(pinned, &u.consumer, &u.submission_id, &act.actor, n);
+        if gate_core::binding::<Sha2>(&pinned.nft_program, &pinned.collection, &context) == fact.binding {
+            nonce = Some(n);
+            break;
+        }
+    }
+    let Some(nonce) = nonce else {
+        return refusal_at(pda, Outcome::BindingMismatch, "the fact is not a proof by this acting account");
+    };
+    // If the indexer is also available, the two sources must agree.
+    if let Ok(events) = reader.gated_events(&u.tx_hash, &u.consumer) {
+        for event in events {
+            if event.tx_hash == u.tx_hash
+                && event.program_account_id == u.consumer
+                && event.selector == gated_selector()
+            {
+                if let Some(gated) = decode_gated_event(&event.data, &u.submission_id) {
+                    if gated.actor != act.actor || gated.nonce != nonce || gated.slot != act.slot {
+                        return refusal_at(pda, Outcome::BindingMismatch, "the Gated event and the Act transaction disagree");
+                    }
+                }
+            }
+        }
+    }
+    verify_context(reader, pinned, &proof.slot, &onchain_context(pinned, &u.consumer, &u.submission_id, &act.actor, nonce))
+}
+
 /// Re-check an on-chain use in app code, without a transaction (spec §5, "same proof,
 /// both ways"). The acting account and nonce come from the Act transaction's Gated
 /// event over the LEZ indexer RPC, never from the caller. A record is accepted only
@@ -239,6 +354,14 @@ pub fn verify_onchain_use(
             return refusal(Outcome::BindingMismatch, "the Gated event names a different pass");
         }
         let context = onchain_context(pinned, &u.consumer, &u.submission_id, &gated.actor, gated.nonce);
+        // If a getTransaction decoder is available too, the sources must agree.
+        if let Ok(Some(tx)) = reader.act_transaction(&u.tx_hash) {
+            if tx.actor != gated.actor || tx.slot != gated.slot
+                || tx.consumer != u.consumer || !tx.applied
+            {
+                return refusal(Outcome::BindingMismatch, "the Gated event and the Act transaction disagree");
+            }
+        }
         return verify_context(reader, pinned, &proof.slot, &context);
     }
     refusal(Outcome::NoFact, "no Gated event from this consumer for this transaction and submission id")
@@ -310,6 +433,13 @@ impl<T: RpcJson> ChainReader for JsonRpcReader<T> {
             });
         }
         Ok(out)
+    }
+
+    fn act_transaction(&self, _: &Bytes32) -> Result<Option<ActTransaction>, String> {
+        // Typed decoding needs the LEZ wallet types; gate_verify has no LEZ dependency.
+        // Callers with those types (gate-cli) supply ActTransaction through their own
+        // ChainReader; this default is for JSON-RPC-only callers that cannot decode it.
+        Err("getTransaction: no decoder in this reader; supply an ActTransaction reader".to_owned())
     }
 }
 

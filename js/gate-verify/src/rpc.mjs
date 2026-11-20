@@ -7,7 +7,7 @@
 // check the RPC's answer. Use your own node.
 
 import {
-  b58encode, b64decode, binding, check, contextOffchain, contextOnchain, readU64le, sha256, slotPda, hex,
+  b58encode, b64decode, binding, check, contextOffchain, contextOnchain, readU64le, sha256, slotPda, hex, CODES, unhex, decodeFact,
 } from './core.mjs';
 
 /** A JSON-RPC 2.0 call. `fetchFn` defaults to the global fetch. */
@@ -66,6 +66,37 @@ export async function verifyOffchain({ rpcUrl, pinned, proof, use, fetchFn }) {
   return verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
 }
 
+/**
+ * Decode a public Act transaction from getTransaction's base64 LeeTransaction.
+ * Layout (miniapp/web/logic.mjs:57-72, extended for Act's nonce): tag, actors,
+ * authorized accounts, promotions, root actor + program, then the Act message
+ * (tag 0, slot). Returns null for a different transaction shape.
+ */
+export function decodeActTransaction(b64) {
+  const b = b64decode(b64);
+  if (b[0] !== 0) return null;
+  let at = 1;
+  const u32 = (off) => new DataView(b.buffer, b.byteOffset + off, 4).getUint32(0, true);
+  at += 4 + u32(at) * 64; // actors
+  at += 4 + u32(at) * 32; // authorized accounts
+  at += 4 + u32(at) * 8;  // promotions
+  if (at + 64 > b.length) return null;
+  const actor = b.slice(at, at + 32);
+  const consumer = b.slice(at + 32, at + 64);
+  at += 64;
+  if (at + 4 > b.length) return null;
+  const len = u32(at);
+  const message = b.slice(at + 4, at + 4 + len);
+  if (len !== 33 || message[0] !== 0) return null;
+  return { actor, consumer, slot: message.slice(1, 33) };
+}
+
+/** Decode borsh ConsumerState { nonce: u64, pending: Option } for the state check. */
+export function decodeConsumerState(bytes) {
+  if (bytes.length < 9) return null;
+  return { nonce: new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, true) };
+}
+
 /** The event's selector: sha256("lp0001-consumer::Gated")[..8] (LEZ convention). */
 export function gatedSelector() {
   return sha256(new TextEncoder().encode('lp0001-consumer::Gated')).slice(0, 8);
@@ -118,13 +149,77 @@ export async function readGatedEvent({ rpcUrl, txHash, submissionId, programAcco
 }
 
 /**
+ * Re-check an on-chain use with no indexer (Job K). The Act transaction carries actor,
+ * consumer, slot and the nonce it was made at; the consumer's current state (nonce bumped on
+ * OK) shows it applied. `actTx` may be supplied already decoded, or is fetched and decoded
+ * from getTransaction. `applied` is false for a reverted transaction; a caller with block
+ * data should set it (this module cannot cheaply parse the block's reverted list).
+ */
+export async function verifyOnchainTx({
+  rpcUrl, pinned, proof, submissionId, txHash, fetchFn, actTx, consumer,
+}) {
+  const bad = (name, error) => ({
+    name, code: CODES.indexOf(name), fact: null, rpc: rpcUrl, error,
+  });
+  let act = actTx;
+  if (!act) {
+    try {
+      const result = await rpcCall(rpcUrl, 'getTransaction', [hex(txHash)], fetchFn);
+      if (!Array.isArray(result)) return bad('NO_FACT', 'getTransaction: not included');
+      act = decodeActTransaction(result[0]);
+      if (!act) return bad('BINDING_MISMATCH', 'not an Act transaction');
+    } catch (e) {
+      return bad('RPC_UNAVAILABLE', String(e?.message ?? e));
+    }
+  }
+  if (act.applied === false) return bad('NO_FACT', 'the Act transaction reverted');
+  if (!eq32(act.consumer, consumer)) return bad('BINDING_MISMATCH', "another consumer's Act");
+  if (!eq32(act.slot, proof.slot)) return bad('BINDING_MISMATCH', 'the Act names a different pass');
+  let state;
+  try {
+    const account = await rpcCall(rpcUrl, 'getAccountView', [
+      { account_id: b58encode(act.actor), program_account_id: b58encode(consumer) },
+    ], fetchFn);
+    const key = b58encode(consumer);
+    const bytes = account?.data?.actor_states?.[key];
+    state = decodeConsumerState(Uint8Array.from(bytes ?? []));
+    if (!state) return bad('MALFORMED', 'the consumer state does not decode');
+  } catch (e) {
+    return bad('RPC_UNAVAILABLE', String(e?.message ?? e));
+  }
+  const pda = slotPda(pinned.gate, proof.slot);
+  let fact;
+  try {
+    const account = await rpcCall(rpcUrl, 'getAccountView', [
+      { account_id: b58encode(pda), program_account_id: b58encode(pinned.gate) },
+    ], fetchFn);
+    const bytes = account?.data?.actor_states?.[b58encode(pinned.gate)];
+    fact = decodeFact(Uint8Array.from(bytes ?? []));
+    if (!fact) return bad('NO_FACT', 'the slot has no membership fact');
+  } catch (e) {
+    return bad('RPC_UNAVAILABLE', String(e?.message ?? e));
+  }
+  // Find the nonce whose context the fact was written for; it must be below the
+  // consumer's current nonce (an Act has happened since).
+  let nonce = null;
+  for (let n = 0n; n < state.nonce; n++) {
+    const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, act.actor, n);
+    if (hex(binding(pinned.nftProgram, pinned.collection, ctx)) === hex(fact.binding)) { nonce = n; break; }
+  }
+  if (nonce === null) return bad('BINDING_MISMATCH', 'the fact is not a proof by this acting account');
+  const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, act.actor, nonce);
+  return verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
+}
+
+
+/**
  * Re-check an on-chain use in app code. The acting account and nonce are READ
  * from the Act transaction's public Gated event over the LEZ indexer RPC; they
  * are no longer taken from the caller (Job F). `rpcUrl` serves the slot/time
  * reads (sequencer RPC); `eventsUrl` defaults to it and serves getEvents
  * (indexer RPC) — use a node or proxy that serves both if they differ.
  */
-export async function verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consumer, submissionId, txHash, fetchFn }) {
+export async function verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consumer, submissionId, txHash, fetchFn, actTx }) {
   const eventUrl = eventsUrl ?? rpcUrl;
   const found = await readGatedEvent({ rpcUrl: eventUrl, txHash, submissionId, programAccountId: consumer, fetchFn });
   if ('error' in found) {
@@ -138,6 +233,20 @@ export async function verifyOnchainUse({ rpcUrl, eventsUrl, pinned, proof, consu
     };
   }
   const { gated, record } = found;
+  // If a getTransaction decoder is available too, the sources must agree.
+  const tx = actTx ?? await (async () => {
+    try {
+      const result = await rpcCall(eventUrl, 'getTransaction', [hex(txHash)], fetchFn);
+      return Array.isArray(result) ? decodeActTransaction(result[0]) : null;
+    } catch { return null; }
+  })();
+  if (tx && (
+    !eq32(tx.actor, gated.actor) || !eq32(tx.slot, gated.slot)
+    || !eq32(tx.consumer, consumer)
+  )) {
+    return { name: 'BINDING_MISMATCH', code: 3, fact: null, rpc: eventUrl,
+      error: 'the Gated event and the Act transaction disagree' };
+  }
   if (!eq32(gated.slot, proof.slot)) {
     // Existing code BINDING_MISMATCH: the event is for a different pass.
     return {

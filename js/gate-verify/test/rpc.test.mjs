@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as g from '../src/core.mjs';
-import { verifyOffchain, verifyOnchainUse, actorStateFromAccount, blockTimestamp, gatedSelector } from '../src/rpc.mjs';
+import { verifyOffchain, verifyOnchainUse, verifyOnchainTx, decodeActTransaction, actorStateFromAccount, blockTimestamp, gatedSelector } from '../src/rpc.mjs';
 
 const T = (b) => new Uint8Array(32).fill(b);
 const NB = 1763500200000n;
@@ -214,4 +214,116 @@ test('JSON shapes: lee_core account JSON and borsh-base64 block', () => {
   assert.equal(actorStateFromAccount(acct, T(1)).length, 0);
   assert.equal(actorStateFromAccount(null, T(1)).length, 0);
   assert.equal(blockTimestamp(blockB64(5, 1763500000123n)), 1763500000123n);
+});
+
+// ---- Job K: no-indexer verification from the Act transaction -------------------------------
+function fakeTxRpc({ fact, now, consumerNonce }) {
+  const fetchFn = async (url, init) => {
+    const req = JSON.parse(init.body);
+    let result;
+    if (req.method === 'getAccountView') {
+      const program = req.params[0].program_account_id;
+      const states = program === g.b58encode(T(0xcc))
+        ? { [program]: Array.from([...new DataView(new ArrayBuffer(8)).setBigUint64 ? [0] : []]) }
+        : {};
+      // Build the consumer state bytes: nonce LE + pending None, or the slot fact.
+      const bytes = program === g.b58encode(T(0xcc))
+        ? (() => { const b = new Uint8Array(9); new DataView(b.buffer).setBigUint64(0, BigInt(consumerNonce), true); return Array.from(b); })()
+        : Array.from(fact);
+      result = { nonce: 0, data: { actor_states: { [program]: bytes } } };
+      void states;
+    } else if (req.method === 'getLastBlockId') {
+      result = 99;
+    } else if (req.method === 'getBlock') {
+      result = blockB64(99, now);
+    } else if (req.method === 'getEvents') {
+      result = [];
+    } else {
+      return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 1, error: { code: -1, message: 'Method not found' } }) };
+    }
+    return { ok: true, json: async () => ({ jsonrpc: '2.0', id: 1, result }) };
+  };
+  return fetchFn;
+}
+
+function noIndexerSetup(nonce = 0) {
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1); const slot = SLOT;
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const fact = g.encodeFact({ binding: g.binding(pinned.nftProgram, pinned.collection, ctx), notBefore: NB, expiresAt: NB + 3600000n });
+  const txHash = T(0x42);
+  const actTx = { actor, consumer, slot, applied: true, blockId: 99 };
+  const base = { rpcUrl: 'x', pinned, proof, submissionId: sub, txHash, consumer, fetchFn: fakeTxRpc({ fact, now: NB + 5n, consumerNonce: nonce }) };
+  return { base, actTx, sub, actor, slot };
+}
+
+test('no indexer: an applied Act and its nonce bump verify', async () => {
+  const { base, actTx } = noIndexerSetup(1);
+  const v = await verifyOnchainTx({ ...base, actTx });
+  assert.equal(v.name, 'OK');
+});
+
+test('no indexer: a later second Act still verifies the first transaction', async () => {
+  const { base, actTx } = noIndexerSetup(5); // A has acted many times since
+  const v = await verifyOnchainTx({ ...base, actTx });
+  assert.equal(v.name, 'OK');
+});
+
+test('no indexer: a reverted Act is refused', async () => {
+  const { base, actTx } = noIndexerSetup(1);
+  const v = await verifyOnchainTx({ ...base, actTx: { ...actTx, applied: false } });
+  assert.equal(v.name, 'NO_FACT');
+});
+
+test('no indexer: another consumer\'s Act is refused', async () => {
+  const { base, actTx } = noIndexerSetup(1);
+  const v = await verifyOnchainTx({ ...base, actTx: { ...actTx, consumer: T(0x99) } });
+  assert.equal(v.name, 'BINDING_MISMATCH');
+});
+
+test('both paths: an event that disagrees with the Act transaction is refused', async () => {
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1); const txHash = T(0x42);
+  const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, 0n);
+  const r = fakeRpc({ state: goodFact(ctx), now: NB + 1n, events: [gatedRecord({ actor, nonce: 0n, submissionId: sub })] });
+  const v = await verifyOnchainUse({
+    rpcUrl: 'x', pinned, proof, consumer, submissionId: sub, txHash, fetchFn: r.fetchFn,
+    actTx: { actor, consumer, slot: T(0x99), applied: true },
+  });
+  assert.equal(v.name, 'BINDING_MISMATCH');
+});
+
+test('decodeActTransaction reads actor, consumer and slot from a public tx', () => {
+  const b = new Uint8Array(1 + 4 + 64 + 4 + 32 + 4 + 32 + 4 + 33);
+  const dv = new DataView(b.buffer);
+  let at = 0;
+  b[at++] = 0;
+  dv.setUint32(at, 0, true); at += 4; // actors
+  dv.setUint32(at, 0, true); at += 4; // authorized
+  dv.setUint32(at, 0, true); at += 4; // promotions
+  b.set(T(0xa1), at); at += 32;
+  b.set(T(0xcc), at); at += 32;
+  dv.setUint32(at, 33, true); at += 4;
+  b[at++] = 0;
+  b.set(SLOT, at); at += 32;
+  const decoded = decodeActTransaction(Buffer.from(b).toString('base64'));
+  assert.equal(g.hex(decoded.slot), g.hex(SLOT));
+  assert.equal(g.hex(decoded.actor), g.hex(T(0xa1)));
+});
+
+test('shared Act-transaction vector: JS agrees with the Rust no-indexer verifier', async () => {
+  const v = JSON.parse(readFileSync(new URL('../../../vectors/act-tx-vector.json', import.meta.url), 'utf8'));
+  const h = (k) => g.unhex(v[k]);
+  const pinnedV = { gate: h('gate'), nftProgram: h('nft_program'), collection: h('collection'), zoneId: h('zone_id') };
+  const proofV = { gate: h('gate'), slot: g.unhex(v.act.slot), not_before: 0n, expires_at: 0n };
+  const state = Uint8Array.from(v.fact);
+  const fetchFn = fakeTxRpc({ fact: state, now: BigInt(v.now_ms), consumerNonce: v.consumer_nonce });
+  const verdict = await verifyOnchainTx({
+    rpcUrl: 'x', pinned: pinnedV, proof: proofV,
+    submissionId: h('submission_id'), txHash: h('tx_hash'),
+    consumer: h('consumer'), fetchFn,
+    actTx: {
+      actor: g.unhex(v.act.actor), consumer: g.unhex(v.act.consumer), slot: g.unhex(v.act.slot),
+      applied: v.act.applied,
+    },
+  });
+  assert.equal(verdict.name, v.expected);
 });

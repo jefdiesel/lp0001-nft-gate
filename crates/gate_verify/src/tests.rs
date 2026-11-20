@@ -336,3 +336,176 @@ fn a_shared_gated_event_vector_agrees_with_javascript() {
     let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
     assert_eq!(verdict.outcome.name(), v["expected"].as_str().unwrap(), "{verdict:?}");
 }
+
+// -------------------------------------------------------------------------------------------
+// Job K: the no-indexer path (Act transaction + consumer state)
+// -------------------------------------------------------------------------------------------
+
+use crate::{ActTransaction, ConsumerStateView, decode_consumer_state};
+
+/// A reader with a stubbed Act transaction and consumer state, used for the no-indexer path.
+struct TxReader {
+    inner: JsonRpcReader<FakeRpc>,
+    act: Option<ActTransaction>,
+    consumer_state: Option<Vec<u8>>,
+}
+
+impl ChainReader for TxReader {
+    fn actor_state(&self, account: &Bytes32, program: &Bytes32) -> Result<Vec<u8>, String> {
+        if program == &[0xCC; 32] {
+            return Ok(self.consumer_state.clone().unwrap_or_default());
+        }
+        self.inner.actor_state(account, program)
+    }
+    fn latest_timestamp(&self) -> Result<u64, String> {
+        self.inner.latest_timestamp()
+    }
+    fn gated_events(&self, tx_hash: &Bytes32, consumer: &Bytes32) -> Result<Vec<EventRecord>, String> {
+        self.inner.gated_events(tx_hash, consumer)
+    }
+    fn act_transaction(&self, _: &Bytes32) -> Result<Option<ActTransaction>, String> {
+        Ok(self.act)
+    }
+}
+
+fn consumer_state_bytes(nonce: u64) -> Vec<u8> {
+    let mut b = nonce.to_le_bytes().to_vec();
+    b.push(0); // pending: None
+    b
+}
+
+fn act_tx(applied: bool, consumer: Bytes32, slot: [u8; 32]) -> ActTransaction {
+    ActTransaction {
+        actor: [0xA1; 32],
+        consumer,
+        slot,
+        applied,
+        block_id: Some(42),
+    }
+}
+
+fn no_indexer_world(nonce: u64) -> (JsonRpcReader<FakeRpc>, ProofObject) {
+    onchain_case_world(nonce)
+}
+
+fn onchain_case_world(_nonce: u64) -> (JsonRpcReader<FakeRpc>, ProofObject) {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let event = gated_event(consumer, submission, slot, actor, 0);
+    world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![event])
+}
+
+#[test]
+fn no_indexer_an_act_transaction_and_its_state_bump_verify() {
+    let (pinned, consumer, submission, tx_hash, _actor, slot) = onchain_case();
+    let (inner, proof) = no_indexer_world(0);
+    let reader = TxReader {
+        inner,
+        act: Some(act_tx(true, consumer, slot)),
+        consumer_state: Some(consumer_state_bytes(1)),
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+}
+
+#[test]
+fn no_indexer_a_later_second_act_keeps_the_first_transaction_applied() {
+    let (pinned, consumer, submission, tx_hash, _actor, slot) = onchain_case();
+    let (inner, proof) = no_indexer_world(0);
+    let reader = TxReader {
+        inner,
+        act: Some(act_tx(true, consumer, slot)),
+        consumer_state: Some(consumer_state_bytes(5)), // A has acted several times since
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    // The slot fact is still the one for nonce 0 in this stub: the Act at 0 is verified as
+    // applied and A's nonce moved beyond it. A newer prove would replace the fact (freshness).
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+}
+
+#[test]
+fn no_indexer_a_reverted_transaction_is_refused() {
+    let (pinned, consumer, submission, tx_hash, _actor, slot) = onchain_case();
+    let (inner, proof) = no_indexer_world(0);
+    let reader = TxReader {
+        inner,
+        act: Some(act_tx(false, consumer, slot)),
+        consumer_state: Some(consumer_state_bytes(1)),
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::NoFact, "{verdict:?}");
+}
+
+#[test]
+fn no_indexer_another_consumers_act_is_refused() {
+    let (pinned, consumer, submission, tx_hash, _actor, slot) = onchain_case();
+    let (inner, proof) = no_indexer_world(0);
+    let reader = TxReader {
+        inner,
+        act: Some(act_tx(true, [0x99; 32], slot)),
+        consumer_state: Some(consumer_state_bytes(1)),
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::BindingMismatch, "{verdict:?}");
+}
+
+#[test]
+fn a_gated_event_that_disagrees_with_the_act_transaction_is_refused() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let context = onchain_context(&pinned, &consumer, &submission, &actor, 0);
+    let event = gated_event(consumer, submission, slot, actor, 0);
+    let (inner, proof) = world_events(Some(good_onchain_fact(context)), Some(NB + 1), vec![event]);
+    let reader = TxReader {
+        inner,
+        act: Some(act_tx(true, consumer, [0x99; 32])), // a different slot than the event
+        consumer_state: Some(consumer_state_bytes(10)),
+    };
+    let verdict = verify_onchain_use(&reader, &pinned, &proof, &OnchainUse { consumer, submission_id: submission, tx_hash });
+    assert_eq!(verdict.outcome, Outcome::BindingMismatch, "{verdict:?}");
+}
+
+#[test]
+fn a_consumer_state_decodes_and_rejects_garbage() {
+    let decoded = decode_consumer_state(&consumer_state_bytes(7)).expect("state decodes");
+    assert_eq!(decoded, ConsumerStateView { nonce: 7 });
+    assert!(decode_consumer_state(&[1, 2, 3]).is_none());
+}
+
+#[test]
+fn a_shared_act_transaction_vector_agrees_with_javascript() {
+    let v: Value = serde_json::from_str(include_str!("../../../vectors/act-tx-vector.json")).unwrap();
+    let unhexv = |k: &str| -> Bytes32 { unhex32(v[k].as_str().unwrap()).unwrap() };
+    let pinned = Pinned {
+        gate: unhexv("gate"),
+        nft_program: unhexv("nft_program"),
+        collection: unhexv("collection"),
+        zone_id: unhexv("zone_id"),
+    };
+    let consumer = unhexv("consumer");
+    let submission = unhexv("submission_id");
+    let tx_hash = unhexv("tx_hash");
+    let a = &v["act"];
+    let act = ActTransaction {
+        actor: unhex32(a["actor"].as_str().unwrap()).unwrap(),
+        consumer: unhex32(a["consumer"].as_str().unwrap()).unwrap(),
+        slot: unhex32(a["slot"].as_str().unwrap()).unwrap(),
+        applied: a["applied"].as_bool().unwrap(),
+        block_id: Some(42),
+    };
+    let fact: Vec<u8> = v["fact"].as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect();
+    let (inner, proof) = world_events(
+        Some(fact),
+        Some(v["now_ms"].as_u64().unwrap()),
+        vec![], // no indexer
+    );
+    let reader = TxReader {
+        inner,
+        act: Some(act),
+        consumer_state: Some(consumer_state_bytes(v["consumer_nonce"].as_u64().unwrap())),
+    };
+    let verdict = verify_onchain_tx(
+        &reader, &pinned, &proof,
+        &OnchainUse { consumer, submission_id: submission, tx_hash },
+    );
+    assert_eq!(verdict.outcome.name(), v["expected"].as_str().unwrap(), "{verdict:?}");
+}
