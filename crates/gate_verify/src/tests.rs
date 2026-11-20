@@ -558,3 +558,56 @@ fn the_bounded_search_finds_a_recent_nonce_and_refuses_a_distant_one() {
         Some("no matching nonce in the last 1024 Acts by this account")
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// gate-cli's prefetched reader (rc3 run 2026-11-20): verify after a successful Act
+// -------------------------------------------------------------------------------------------
+
+fn prefetched_after_act(consumer_state: Option<Vec<u8>>, fact_everywhere: bool) -> (crate::Prefetched, ProofObject, OnchainUse) {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let fact = good_onchain_fact(onchain_context(&pinned, &consumer, &submission, &actor, 0));
+    let pda = gate_core::slot_pda::<Sha2>(&pinned.gate, &slot);
+    let mut states = vec![((pda, pinned.gate), Ok(fact.clone()))];
+    if let Some(s) = consumer_state {
+        states.push(((actor, consumer), Ok(if fact_everywhere { fact } else { s })));
+    }
+    let reader = crate::Prefetched {
+        states,
+        now: Ok(NB + 1),
+        events: Err("getEvents: Method not found".to_owned()),
+        act: Ok(Some(act_tx(true, consumer, slot))),
+    };
+    let proof = ProofObject { gate: pinned.gate, slot, not_before: 0, expires_at: 0, tx_hash: None };
+    (reader, proof, OnchainUse { consumer, submission_id: submission, tx_hash })
+}
+
+#[test]
+fn prefetched_verify_after_a_successful_act_is_ok() {
+    // The Act moved A's consumer nonce 0 -> 1; the fact was written for nonce 0.
+    let (reader, proof, u) = prefetched_after_act(Some(consumer_state_bytes(1)), false);
+    let verdict = verify_onchain_tx(&reader, &pinned(), &proof, &u);
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+}
+
+#[test]
+fn prefetched_the_old_wiring_reading_the_fact_as_consumer_state_is_what_failed() {
+    // gate-cli's reader before the fix: the fact's bytes served as A's consumer state.
+    let (reader, proof, u) = prefetched_after_act(Some(consumer_state_bytes(1)), true);
+    let verdict = verify_onchain_tx(&reader, &pinned(), &proof, &u);
+    assert_eq!(verdict.outcome, Outcome::BindingMismatch, "{verdict:?}");
+}
+
+#[test]
+fn prefetched_an_unread_consumer_state_is_an_rpc_error_not_a_guess() {
+    let (reader, proof, u) = prefetched_after_act(None, false);
+    let verdict = verify_onchain_tx(&reader, &pinned(), &proof, &u);
+    assert_eq!(verdict.outcome, Outcome::RpcUnavailable, "{verdict:?}");
+}
+
+#[test]
+fn prefetched_a_slot_with_no_matching_act_is_a_binding_mismatch() {
+    let (mut reader, proof, u) = prefetched_after_act(Some(consumer_state_bytes(1)), false);
+    reader.act = Ok(Some(act_tx(true, u.consumer, [0x77; 32])));
+    let verdict = verify_onchain_tx(&reader, &pinned(), &proof, &u);
+    assert_eq!(verdict.outcome, Outcome::BindingMismatch, "{verdict:?}");
+}

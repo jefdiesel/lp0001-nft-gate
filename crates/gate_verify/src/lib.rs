@@ -173,6 +173,37 @@ pub trait ChainReader {
     fn act_transaction(&self, tx_hash: &Bytes32) -> Result<Option<ActTransaction>, String>;
 }
 
+/// A `ChainReader` over values read beforehand, for async callers that read first and then
+/// run the synchronous check (gate-cli). Each actor state is keyed by `(account, program)`;
+/// a key that was not read is an error, never another account's bytes. (gate-cli's own
+/// reader once answered every `actor_state` with the slot's fact, so the no-indexer path
+/// decoded the fact as A's consumer nonce and refused a correct Act: rc3 run 2026-11-20.)
+#[derive(Debug, Clone)]
+pub struct Prefetched {
+    pub states: Vec<((Bytes32, Bytes32), Result<Vec<u8>, String>)>,
+    pub now: Result<u64, String>,
+    pub events: Result<Vec<EventRecord>, String>,
+    pub act: Result<Option<ActTransaction>, String>,
+}
+
+impl ChainReader for Prefetched {
+    fn actor_state(&self, account: &Bytes32, program: &Bytes32) -> Result<Vec<u8>, String> {
+        self.states
+            .iter()
+            .find(|((a, p), _)| a == account && p == program)
+            .map_or_else(|| Err("this actor state was not read".to_owned()), |(_, s)| s.clone())
+    }
+    fn latest_timestamp(&self) -> Result<u64, String> {
+        self.now.clone()
+    }
+    fn gated_events(&self, _: &Bytes32, _: &Bytes32) -> Result<Vec<EventRecord>, String> {
+        self.events.clone()
+    }
+    fn act_transaction(&self, _: &Bytes32) -> Result<Option<ActTransaction>, String> {
+        self.act.clone()
+    }
+}
+
 /// Step 1, off chain.
 #[must_use]
 pub fn offchain_context(pinned: &Pinned, u: &OffchainUse<'_>) -> Bytes32 {

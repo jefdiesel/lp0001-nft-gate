@@ -782,14 +782,15 @@ async fn verify(
         }
         _ => bail!("give either --caller-identity or --tx-hash"),
     };
-    // Read first (async), then run the library's synchronous check over what was read.
+    // Read first (async), then run the library's synchronous check over what was read. Each
+    // actor state is keyed by (account, program): the slot's fact, and for an on-chain use the
+    // acting account's consumer state (before 2026-11-20 every read returned the fact).
     let pda = AccountId::new(gate_core::slot_pda::<Sha2>(cfg.gate.value(), &slot));
-    let read = async {
-        let state = public_actor_state(wallet, pda, cfg.gate).await?;
-        let now = latest_timestamp(wallet).await?;
-        Ok::<_, anyhow::Error>((state, now))
-    }
-    .await;
+    let mut states = vec![(
+        (*pda.value(), *cfg.gate.value()),
+        public_actor_state(wallet, pda, cfg.gate).await.map_err(|e| e.to_string()),
+    )];
+    let now = latest_timestamp(wallet).await.map_err(|e| e.to_string());
     let rpc_for_events = events_url.map(|s| url::Url::parse(s)).transpose()?;
     let events_client = match &rpc_for_events {
         Some(u) => sequencer_service_rpc::SequencerClientBuilder::default().build(u.as_str())?,
@@ -804,11 +805,11 @@ async fn verify(
         Kind::Offchain(_) => Ok(None),
         Kind::Onchain(u) => act_transaction(client, HashType(u.tx_hash)).await.map(Some).map_err(|e| e.to_string()),
     };
-    let reader = VerifyReader {
-        state_time: read.map_err(|e| e.to_string()),
-        events: events.clone(),
-        act,
-    };
+    if let Ok(Some(a)) = &act {
+        let (actor, consumer) = (AccountId::new(a.actor), AccountId::new(a.consumer));
+        states.push(((a.actor, a.consumer), public_actor_state(wallet, actor, consumer).await.map_err(|e| e.to_string())));
+    }
+    let reader = gate_verify::Prefetched { states, now, events: events.clone(), act };
     let proof = gate_verify::ProofObject {
         gate: pinned.gate, slot, not_before: 0, expires_at: 0, tx_hash: None,
     };
@@ -822,6 +823,9 @@ async fn verify(
     };
     println!("outcome {} ({})", verdict.outcome.name(), verdict.outcome.plain());
     println!("rpc {url} (trusted for this answer); chain time {:?}", verdict.chain_time_ms);
+    if let Some(why) = &verdict.error {
+        println!("reason {why}");
+    }
     if let Some(f) = verdict.fact {
         println!("fact not_before {} expires_at {}", f.not_before, f.expires_at);
     }
@@ -829,29 +833,6 @@ async fn verify(
         std::process::exit(2);
     }
     Ok(())
-}
-
-/// A ChainReader for `verify`: the slot state and time are prefetched from the
-/// sequencer through the wallet; Gated events are read from the LEZ indexer RPC.
-struct VerifyReader {
-    state_time: Result<(Vec<u8>, u64), String>,
-    events: Result<Vec<gate_verify::EventRecord>, String>,
-    act: Result<Option<gate_verify::ActTransaction>, String>,
-}
-
-impl gate_verify::ChainReader for VerifyReader {
-    fn actor_state(&self, _: &[u8; 32], _: &[u8; 32]) -> Result<Vec<u8>, String> {
-        self.state_time.as_ref().map(|(s, _)| s.clone()).map_err(Clone::clone)
-    }
-    fn latest_timestamp(&self) -> Result<u64, String> {
-        self.state_time.as_ref().map(|(_, t)| *t).map_err(Clone::clone)
-    }
-    fn gated_events(&self, _: &[u8; 32], _: &[u8; 32]) -> Result<Vec<gate_verify::EventRecord>, String> {
-        self.events.clone()
-    }
-    fn act_transaction(&self, _: &[u8; 32]) -> Result<Option<gate_verify::ActTransaction>, String> {
-        self.act.clone()
-    }
 }
 
 /// Decode a public Act transaction from getTransaction, checking the block's reverted list.
