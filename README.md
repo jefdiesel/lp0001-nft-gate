@@ -65,3 +65,22 @@ The wallet never opens the `uri` until the person ticks to allow it for that col
 used yet (`names-wallet:docs/wallet/NFT.md:114`).
 
 Licence: MIT OR Apache-2.0.
+
+## Logos Storage client (requirement 30)
+
+`crates/storage_client` is a small, chain-free client for large NFT metadata/media, closing the
+"No storage client here" gap in `docs/REQUIREMENTS-MAP.md` row 30. It speaks the Logos Storage REST
+shape: `POST /api/storage/v1/data` uploads bytes and returns a CID, `GET
+/api/storage/v1/data/{cid}` fetches them. `StorageClient::upload_file`, `fetch` and `verify_media`
+let a caller publish an image, point an NFT definition's inline `uri`/`media` field at it, and
+check on display that the fetched bytes still hash to the advertised CID (or `sha256` field).
+
+The CID used in this skeleton is the local convention `b` + base32(sha2-256 multihash prefix ‖
+sha256(bytes)); its exact encoding must be checked against a real Logos Storage endpoint before
+production use. Tests run only against a local fake HTTP server on an ephemeral loopback port —
+no chain, no real network, no proving:
+
+```sh
+the build wrapper cargo +1.98.1 test -p storage_client
+```
+

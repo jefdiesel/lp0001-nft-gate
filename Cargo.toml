@@ -12,6 +12,7 @@ members = [
     "crates/gate_verify",
     "crates/gate_wasm",
     "crates/gate_wallet_rules",
+    "crates/storage_client",
 ]
 
 [workspace.package]
