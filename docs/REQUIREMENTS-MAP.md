@@ -50,13 +50,13 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 27 | Proof freshness and invalidation | TTL menu + window (`core:30-36`, `gate:152-166`), one slot overwrite (`gate:198-211`), T07 | MET in logic; chain tests unrun | READ |
 | 28 | State survives restarts; no mandatory external services; Logos Storage | Gate state on chain; no Logos Storage client in this repo | PARTLY | READ |
 | 29 | Centralised media fetching optional/disableable | Per-card image fetch needs an explicit tick (`names-wallet:basecamp/qml/Main.qml:7540-7542`, `:10971-10976`) | MET | READ |
-| 30 | Large metadata/media on Logos Storage | No storage client here | NOT MET here | READ |
+| 30 | Large metadata/media on Logos Storage | `crates/storage_client`: upload → CID, fetch via `/network/stream`, `verify_media` by `mediaSha256`; offline tests against a fake that answers like the real node (API shape checked on a real Logos Storage node 2026-11-20). Not yet used by an NFT mint/metadata flow | PARTLY | READ |
 
 ## Performance
 
 | # | Requirement | Evidence | Status | Mark |
 |---|---|---|---|---|
-| 31 | Proof generation on consumer hardware; benchmarks | No proof run: README:15, `tests/onchain/91-real-proof.sh` written, guarded by AGENTS.md:19 | NOT MET | READ |
+| 31 | Proof generation on consumer hardware; benchmarks | Harness `tests/onchain/BENCH-proof-and-gas.sh` (+ self-test), no numbers yet. No proof run: README:15, `tests/onchain/91-real-proof.sh` written, guarded by AGENTS.md:19 | NOT MET | READ |
 | 32 | On-chain verification CU cost documented | `tests/onchain/T08-consumer.sh:19-20` records gas when run; no numbers yet | NOT MET | READ |
 
 ## Supportability
