@@ -130,7 +130,9 @@ No trusted setup of ours.
    (`lez/common/src/transaction.rs:137-148`). The client and mini-app show a gated action from
    its `Act` transaction instead (`getTransaction`: root actor = A, message = `Act{slot}`;
    reverted flag from the block), and monthly counts come from scanning blocks for non-reverted
-   `Act`s to the consumer, or from an indexer.
+   `Act`s to the consumer, or from an indexer. Where no indexer exists, both verifiers use the
+   Act transaction and the consumer's nonce instead (`js/gate-verify/README.md`, "When no indexer
+   serves events"); that path cannot tell which Act produced the current pass.
 4. **Immutability, help text vs code.** The wallet CLI calls `immutable` "not
    protocol-enforced" (`lez/wallet/src/cli/programs/program_loader.rs`, `UpdateHeader` doc),
    while the loader asserts `!old_header.immutable` (`program_loader/core/src/lib.rs:144-145`).

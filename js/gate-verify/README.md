@@ -75,6 +75,23 @@ program or another pass answers `NO_FACT` or `BINDING_MISMATCH` respectively. Th
 is checked against the pinned consumer in the RPC filter and again on every record. The
 result includes `gated: { actor, nonce, blockId }` as read.
 
+### When no indexer serves events
+
+A standalone sequencer has no `getEvents`. Both verifiers fall back to the Act transaction:
+`verifyOnchainTx({ rpcUrl, pinned, proof, submissionId, txHash, consumer, fetchFn, actTx })`
+reads it with `getTransaction`, takes the acting account, consumer program and slot from the
+decoded root message, and checks the block's reverted flag. The consumer's current state at
+`(actor, consumer)` is read with `getAccountView`; the nonce is found by matching the slot
+fact's binding against contexts for the last 1024 nonces below that state, starting at the
+most recent. No match answers `BINDING_MISMATCH`: "no matching nonce in the last 1024 Acts by
+this account". Where an indexer is also available, the event and the transaction must agree.
+
+This path shows that the acting account made an Act and that a live pass exists. It cannot tell
+which of several Acts by that account produced the current pass: a new proof overwrites the
+same slot. It trusts the sequencer's transaction, block and state reads, and the pinned
+consumer and gate programs. `gate-cli verify` uses this path automatically when `getEvents`
+is unavailable; `--events-url` still selects an indexer for the event path.
+
 ## Outcome codes
 
 `OK` 0, `NO_FACT` 1, `MALFORMED` 2, `BINDING_MISMATCH` 3, `NOT_YET_VALID` 4, `EXPIRED` 5,

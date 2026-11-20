@@ -45,4 +45,10 @@ tests/onchain/T00-unit.sh      # vectors check, cargo test --workspace, node tes
 What it trusts and does not: the off-chain check trusts the LEZ RPC it reads and the sequencer
 (no state root in headers). See `js/gate-verify/README.md` and docs/DESIGN.md.
 
+Checking an on-chain use reads the Act transaction's `Gated` event where an indexer serves it.
+A standalone chain has no events RPC: the verifiers then read the Act transaction and the
+consumer's nonce, searching the last 1024 Acts for the proof's nonce. That path shows an Act
+happened and a pass is live, but not which of several Acts made the current pass. The same
+plain refusal codes apply. See `js/gate-verify/README.md`.
+
 Licence: MIT OR Apache-2.0.
