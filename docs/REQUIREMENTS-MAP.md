@@ -11,15 +11,15 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 | # | Requirement | Evidence | Status | Mark |
 |---|---|---|---|---|
-| 1 | Own/send/receive NFTs, public + private | Wallet side is `logos-names-nft` (other repo); this gate only reads NFT state (`README.md:3-7`, `gate:63-88`). Setup scripts call `gate-cli nft …` (`tests/onchain/02-setup-wallet.sh:33`) | PARTLY — wallet not in this repo | GUESS |
-| 2 | NFT display, grouped, metadata status | No NFT gallery here; mini-app shows proof verdicts (`miniapp/web/logic.mjs:11-30`) | NOT MET in this repo | READ |
-| 3 | Collection view, counts | No such screen here | NOT MET in this repo | READ |
-| 4 | SDK NFT APIs: enumerate, membership, transfer proposals | Shim exposes `requestMembershipProof` only (`shim:118-160`); enumeration/transfer APIs are the wallet's | PARTLY — membership proof only | READ |
+| 1 | Own/send/receive NFTs, public + private | Collectibles sends/receives and the module's NFT actions (`names-wallet:basecamp/qml/Main.qml:7525-7543`, `names-wallet:basecamp-module/rust-lib/src/lib.rs:1302-1306`); this gate reads NFT state (`gate:63-88`) | MET | READ |
+| 2 | NFT display, grouped, metadata status | NFT cards with metadata rows (`names-wallet:basecamp/qml/Main.qml:10966`, `names-wallet:basecamp/qml/nft.mjs:40`), failed fetches shown as problems (`nft.mjs:106`) | MET | READ |
+| 3 | Collection view, counts | Collection counts and grouping (`names-wallet:basecamp/qml/Main.qml:7558`, `names-wallet:basecamp/qml/nft.mjs:70`) | MET | READ |
+| 4 | SDK NFT APIs: enumerate, membership, transfer proposals | Wallet module exposes holdings, membership query, transfer proposals and status (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1346-1349`); shim exposes the proof request (`shim:118-160`) | MET | READ |
 | 5 | Private collection-membership proof | `gate:63-196` (Prove → own NFT `ReadState` → public fact); tests `crates/gate_program/tests/conversation.rs:183-204` | MET | READ |
 | 6 | On-chain verification | Reference consumer `crates/consumer_program/src/lib.rs:91-146`; `tests/onchain/T08-consumer.sh` written | PARTLY — test not run (README:15) | READ |
 | 7 | Off-chain verification + library + docs | `verify:219` Rust, `js:64` JS, shared `gate_core::check` (`core:535-560`); README `js/gate-verify/README.md:22-36` | MET | READ |
 | 8 | Replay resistance across contexts | Binding over collection + context (`core:162-164`); tests `properties.rs:103-149` and T07/T08 | MET | READ |
-| 9 | Proof via SDK with approval prompt | Shim request/status (`shim:118-160`); approval sheet is wallet-side | PARTLY — prompt not here | GUESS |
+| 9 | Proof via SDK with approval prompt | Shim request/status (`shim:118-160`); wallet request + sheet (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1356`, `:1328`) | MET | READ |
 | 10 | Proof request stands alone | Shim request body has no account/audience (`shim:52-70`, test `js/wallet-shim/test/membership.test.mjs:28`) | PARTLY — wallet grant not here | READ |
 | 11 | Token-gating mini-app, both consumptions, submission id | `miniapp/web/{index.html,app.mjs,logic.mjs}`, `miniapp/basecamp/` skeleton; `Gated` carries `SUBMISSION_ID` (`gate_interface:87-96`, consumer `:125-140`) | PARTLY — deployed nowhere yet | READ |
 | 12 | Testnet 0.4 end-to-end | Only standalone 0.4 chain; README:15 "nothing has run on a chain" | NOT MET | READ |
@@ -28,13 +28,13 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 | # | Requirement | Evidence | Status | Mark |
 |---|---|---|---|---|
-| 13 | Module/SDK usable by other modules and dApps, additive | `shim:118-160`, `js/gate-verify/README.md:38-56` | PARTLY — wallet provider not here | READ |
-| 14 | Basecamp GUI + CLI cover NFT holdings/transfers/proof | `client/src/main.rs` (`nft`, `prove`, `act`, `verify`), `miniapp/basecamp/` skeleton | PARTLY — GUI not deployed | READ |
+| 13 | Module/SDK usable by other modules and dApps, additive | Wallet provider NFT + proof capabilities (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:32-33`, `lib.rs:1348-1356`); shim (`shim:118-160`) | MET | READ |
+| 14 | Basecamp GUI + CLI cover NFT holdings/transfers/proof | Wallet Collectibles GUI and approval sheets (`names-wallet:basecamp/qml/Main.qml:7525-7543`), CLI (`client/src/main.rs`: `nft`, `prove`, `act`, `verify`) | MET (code); not deployed | READ |
 | 15 | Module catalog forked and published | No catalog files or `logos-repo.json` in this repo | NOT MET | READ |
-| 16 | NFT-transfer approval prompts name dApp/account/collection/asset | Wallet-side prompt; not in this repo | NOT MET here | GUESS |
-| 17 | Proof prompt distinct, states disclosures, separate approval | Wallet-side prompt; spec text at `LP0001-OWNERSHIP-PROOF-SPEC.md:381-407` | NOT MET here | GUESS |
-| 18 | Per-dApp capabilities legible and revocable | Wallet-side; shim gets plain "capability not granted" refusals (`shim:118-130`, test) | PARTLY | GUESS |
-| 19 | Program source verification in approval prompt | Client pre-check reads pinned image (`client/src/main.rs:393-401`); prompt is wallet-side | PARTLY | READ |
+| 16 | NFT-transfer approval prompts name dApp/account/collection/asset | Wallet NFT sheet names the dApp, account, collection and asset (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1302-1317`, `Main.qml:7758-7763`) | MET | READ |
+| 17 | Proof prompt distinct, states disclosures, separate approval | Proof request approved on its own sheet, not with transfers (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:531`, `lib.rs:1328`) | MET | READ |
+| 18 | Per-dApp capabilities legible and revocable | Per-app grants `nft_list`/`nft_transfers`/`membership_proof`, individually revocable (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1320-1325`, `provider_nft.rs:577`) | MET | READ |
+| 19 | Program source verification in approval prompt | Approval shows Program Registry verification (`names-wallet:basecamp/qml/Main.qml:9423`, `:11138`); client pre-check (`client/src/main.rs:393-401`) | MET | READ |
 | 20 | UX quality, non-expert | Mini-app logic + tests (`miniapp/test/logic.test.mjs`); no deployed app | PARTLY | READ |
 | 21 | Integration guide, SDK + proof + gating | `js/gate-verify/README.md`, `docs/DESIGN.md`, `docs/WALLET-INTEGRATION.md`, `docs/OWNER-DECISIONS.md` | MET (docs); deployment pending | READ |
 
@@ -44,12 +44,12 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 |---|---|---|---|---|
 | 22 | Clear proof-failure errors | `client/src/main.rs` maps refusals via `gate_wallet_rules::classify` (`gate_wallet_rules/src/lib.rs:75-96`) | MET | READ |
 | 23 | Deterministic invalid-proof outcomes; two verifiers agree | One `gate_core::check` (`core:535-560`), shared vectors `vectors/*.json`, T10 | MET | READ |
-| 24 | No proof / no private enumeration without explicit approval | Wallet-side; shim refuses caller fields (`shim:52-70`) | PARTLY | GUESS |
+| 24 | No proof / no private enumeration without explicit approval | Per-app capability checks before NFT/proof requests (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:32-33`, `:165`, `:531`); shim refuses caller fields (`shim:52-70`) | MET | READ |
 | 25 | Privacy property + stated assumptions | `docs/DESIGN.md:103-108`, spec §6, `js/gate-verify/README.md:7-20` | MET (write-up), not proven on real receipts | READ |
 | 26 | Private transfers unlinkable | Job A observation `docs/lp0001/LP0001-JOB-A-FINDINGS.md` §8b.3 (development receipts) | PARTLY — dev receipts only | READ |
 | 27 | Proof freshness and invalidation | TTL menu + window (`core:30-36`, `gate:152-166`), one slot overwrite (`gate:198-211`), T07 | MET in logic; chain tests unrun | READ |
 | 28 | State survives restarts; no mandatory external services; Logos Storage | Gate state on chain; no Logos Storage client in this repo | PARTLY | READ |
-| 29 | Centralised media fetching optional/disableable | No media fetching code here; wallet-side | NOT MET here | GUESS |
+| 29 | Centralised media fetching optional/disableable | Per-card image fetch needs an explicit tick (`names-wallet:basecamp/qml/Main.qml:7540-7542`, `:10971-10976`) | MET | READ |
 | 30 | Large metadata/media on Logos Storage | No storage client here | NOT MET here | READ |
 
 ## Performance
@@ -85,7 +85,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 ## Summary
 
-MET: 5, 7, 8, 21, 22, 23, 25, 39. Everything else is PARTLY or NOT MET; the largest gaps
+MET: 1, 2, 3, 4, 5, 7, 8, 9, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 39.
 are deployments, real proving, module catalog/CI, the wallet-side UX, and all adoption.
 This map was written from this repo and the prize text only; no chain, other repo or upstream
 issue was inspected for it.
