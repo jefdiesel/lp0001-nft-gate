@@ -22,12 +22,13 @@ if [ "$BENCH_OWNER_OK" != 1 ]; then
 fi
 
 # Same build host and rules as the other on-chain tests.
-. "$(dirname "$0")/env.sh"
+# BENCH_ENV lets the offline self-test point at a stub env (it sets only G).
+. "${BENCH_ENV:-$(dirname "$0")/env.sh}"
 
 OUT=$G/run/bench
 mkdir -p "$OUT"
-CSV=$(cd "$(dirname "$0")" && pwd)/bench-results.csv
-MD=$(cd "$(dirname "$0")/../.." && pwd)/docs/lp0001/BENCHMARK-RESULTS.md
+CSV=${BENCH_CSV:-$(cd "$(dirname "$0")" && pwd)/bench-results.csv}
+MD=${BENCH_MD:-$(cd "$(dirname "$0")/../.." && pwd)/docs/lp0001/BENCHMARK-RESULTS.md}
 
 # No external prover under any circumstances (AGENTS.md §Rules).
 if command -v r0vm >/dev/null 2>&1; then
@@ -47,17 +48,19 @@ if [ -z "$PROOF_LOG" ] || [ ! -f "$PROOF_LOG/time.log" ]; then
   exit 4
 fi
 
-PROOF_SECS=$(awk '/real/{for(i=1;i<=NF;i++) if ($i=="real") {print $(i+1); exit}}' "$PROOF_LOG/time.log" || true)
+# macOS /usr/bin/time -l prints "   12.34 real   5.67 user …": the number comes before "real".
+PROOF_SECS=$(awk '/real/{for(i=1;i<=NF;i++) if ($i=="real") {print $(i-1); exit}}' "$PROOF_LOG/time.log" || true)
 PEAK_KB=$(grep footprint_kb "$PROOF_LOG/sampler.log" 2>/dev/null | sort -t= -k2 -n | tail -1 | sed -E 's/.*footprint_kb=([0-9]+).*/\1/' || true)
 MACHINE=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -m)
 MEM_GIB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
 OS=$(sw_vers -productVersion 2>/dev/null || uname -s)
 
 # --- 32: on-chain verification gas/CU -----------------------------------------
-# T08-consumer.sh records "Act gas: fee <n>" from decode-tx into its log.
-T08_LOG=$G/run/T08-consumer/log.txt
+# T08-consumer.sh sources lib.sh T08 (TNAME=T08), so its log is run/T08/log.txt and
+# finish_test writes "T08 PASS…"; it records "Act gas: fee <n>" from decode-tx.
+T08_LOG=$G/run/T08/log.txt
 ACT_GAS=$(grep -oE 'fee [0-9]+' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
-T08_VERDICT=$(grep -oE '^T08-consumer (PASS|FAIL)' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
+T08_VERDICT=$(grep -oE '^T08 (PASS|FAIL)' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
 
 # --- results ------------------------------------------------------------------
 if [ ! -f "$CSV" ]; then
