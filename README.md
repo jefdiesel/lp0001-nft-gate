@@ -70,15 +70,22 @@ Licence: MIT OR Apache-2.0.
 
 `crates/storage_client` is a small, chain-free client for large NFT metadata/media, closing the
 "No storage client here" gap in `docs/REQUIREMENTS-MAP.md` row 30. It speaks the Logos Storage REST
-shape: `POST /api/storage/v1/data` uploads bytes and returns a CID, `GET
-/api/storage/v1/data/{cid}` fetches them. `StorageClient::upload_file`, `fetch` and `verify_media`
-let a caller publish an image, point an NFT definition's inline `uri`/`media` field at it, and
-check on display that the fetched bytes still hash to the advertised CID (or `sha256` field).
+API as a real node answers it:
 
-The CID used in this skeleton is the local convention `b` + base32(sha2-256 multihash prefix ‖
-sha256(bytes)); its exact encoding must be checked against a real Logos Storage endpoint before
-production use. Tests run only against a local fake HTTP server on an ephemeral loopback port —
-no chain, no real network, no proving:
+- `POST /api/storage/v1/data` uploads bytes; the node answers `200 text/plain` with a bare CID
+  (base58btc, e.g. `zDvZRwzm78buYYJGskHsMFmAQ9PbhZRRg8DgLUMhiGoUAqKewsiC`): `upload_file`/`upload_bytes`.
+- `GET /api/storage/v1/data/{cid}/network/stream` fetches from the network (local content too):
+  `fetch`. `GET /api/storage/v1/data/{cid}` reads the node's local store only: `fetch_local`.
+
+**Uploaders must write `mediaSha256`** (hex sha256 of the media bytes) into the NFT metadata next to
+the `media` CID. A Logos Storage CID is a manifest CID over a block tree and can't be recomputed from
+the bytes, so the hash is the real integrity check: `verify_media` returns `Verified::Hash` when the
+bytes match it. With no hash it only matches the metadata's CID against the CID the bytes were
+fetched from and returns `Verified::CidOnly`, saying the bytes themselves were not checked. No media
+field at all is `NoMedia`, never a pass.
+
+Tests run only against a local fake HTTP server on an ephemeral loopback port that answers like a
+real node (no chain, no real network, no proving):
 
 ```sh
 the build wrapper cargo +1.98.1 test -p storage_client
