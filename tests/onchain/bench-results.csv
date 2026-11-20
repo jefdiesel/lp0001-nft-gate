@@ -1,1 +1,4 @@
 timestamp,row,metric,value,unit,source,notes
+2026-11-20T22:06:29Z,31,proof_wall_time,762.51,s,$BUILD_ROOT/lp0001/rc3-run/run/real-proof-20261120T2139Z/time.log,"Apple M4; 16 GiB; macOS 15.8.2"
+2026-11-20T22:06:29Z,31,proof_peak_footprint,9638912,KiB,$BUILD_ROOT/lp0001/rc3-run/run/real-proof-20261120T2139Z/sampler.log,
+2026-11-20T22:06:29Z,32,act_gas,298712,fee-units,$BUILD_ROOT/lp0001/rc3-run/run/E2E/log.txt,"T08 verdict: PASS"

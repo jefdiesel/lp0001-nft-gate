@@ -16,13 +16,13 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 3 | Collection view, counts | Collection counts and grouping (`names-wallet:basecamp/qml/Main.qml:7558`, `names-wallet:basecamp/qml/nft.mjs:70`) | MET | READ |
 | 4 | SDK NFT APIs: enumerate, membership, transfer proposals | Wallet module exposes holdings, membership query, transfer proposals and status (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1346-1349`); shim exposes the proof request (`shim:118-160`) | MET | READ |
 | 5 | Private collection-membership proof | `gate:63-196` (Prove → own NFT `ReadState` → public fact); tests `crates/gate_program/tests/conversation.rs:183-204` | MET | READ |
-| 6 | On-chain verification | Reference consumer `crates/consumer_program/src/lib.rs:91-146`; `tests/onchain/T08-consumer.sh` written | PARTLY — test not run (README:15) | READ |
+| 6 | On-chain verification | Reference consumer `crates/consumer_program/src/lib.rs:91-146`, deployed on **our rc3 chain** (consumer `5iWMJaM6…8PRN`, gate `GcLMvbvt…nRTB`); run `rc3/E2E-rc3.sh` (log `run/E2E/log.txt` on the Mini): actA's Act `37cb802f…` applied in block 39885 reading the gate PDA (nonce 0 -> 1), actB's Act refused BINDING_MISMATCH, a second Act refused BINDING_MISMATCH, an empty slot NO_FACT, `verify --tx-hash` OK | MET on our rc3 chain (T08's late-Act leg not run: needs a second real proof) | READ |
 | 7 | Off-chain verification + library + docs | `verify:219` Rust, `js:64` JS, shared `gate_core::check` (`core:535-560`); README `js/gate-verify/README.md:22-36` | MET | READ |
 | 8 | Replay resistance across contexts | Binding over collection + context (`core:162-164`); tests `properties.rs:103-149` and T07/T08 | MET | READ |
 | 9 | Proof via SDK with approval prompt | Shim request/status (`shim:118-160`); wallet request + sheet (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1356`, `:1328`) | MET | READ |
 | 10 | Proof request stands alone | Shim request body has no account/audience (`shim:52-70`, test `js/wallet-shim/test/membership.test.mjs:28`) | PARTLY — wallet grant not here | READ |
 | 11 | Token-gating mini-app, both consumptions, submission id | `miniapp/web/{index.html,app.mjs,logic.mjs}`, `miniapp/basecamp/` skeleton; `Gated` carries `SUBMISSION_ID` (`gate_interface:87-96`, consumer `:125-140`) | PARTLY — deployed nowhere yet | READ |
-| 12 | Testnet 0.4 end-to-end | Only standalone 0.4 chain; README:15 "nothing has run on a chain" | NOT MET | READ |
+| 12 | Testnet 0.4 end-to-end | **Our public rc3 chain** (lez.nameswallet.app, real receipts), 2026-11-20: collection, private holding and copy (3 real proofs), one real membership Prove (tx `e40570f3…`, block 39883), consumer Act, re-check; `tests/onchain/rc3/` | MET on our rc3 chain; not on the official testnet 0.4 (row 33) | READ |
 
 ## Usability
 
@@ -56,8 +56,8 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 | # | Requirement | Evidence | Status | Mark |
 |---|---|---|---|---|
-| 31 | Proof generation on consumer hardware; benchmarks | Harness `tests/onchain/BENCH-proof-and-gas.sh` (+ self-test), no numbers yet. No proof run: README:15, `tests/onchain/91-real-proof.sh` written, guarded by AGENTS.md:19 | NOT MET | READ |
-| 32 | On-chain verification CU cost documented | `tests/onchain/T08-consumer.sh:19-20` records gas when run; no numbers yet | NOT MET | READ |
+| 31 | Proof generation on consumer hardware; benchmarks | `docs/lp0001/BENCHMARK-RESULTS.md`, `tests/onchain/bench-results.csv`: membership Prove 762.5 s, peak footprint 9.64 GB (sampler; `time -l` 9.95 GB), Apple M4 16 GB, in-process prover on 4 threads; setup proofs 458-703 s, ~9.4 GB | MET (one machine, our rc3 chain) | READ |
+| 32 | On-chain verification CU cost documented | Same files: the consumer Act (reads the gate PDA) charged 298,712 to its payer; declared gas_limit 46,055, max_fee 605,150 (base fee 8) | MET (our rc3 chain) | READ |
 
 ## Supportability
 
@@ -85,7 +85,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 ## Summary
 
-MET: 1, 2, 3, 4, 5, 7, 8, 9, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 38, 39.
+MET: 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 31, 32, 38, 39 (6, 12, 31, 32 on our rc3 chain).
 The largest gaps are deployments, real proving, module catalog/CI, the wallet-side UX, and all
 adoption. This map was written from this repo, the Names Wallet worktree and the prize text; no
 chain or upstream issue was inspected for it.
