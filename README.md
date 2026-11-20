@@ -51,4 +51,17 @@ consumer's nonce, searching the last 1024 Acts for the proof's nonce. That path 
 happened and a pass is live, but not which of several Acts made the current pass. The same
 plain refusal codes apply. See `js/gate-verify/README.md`.
 
+## NFT media and metadata
+
+An NFT's metadata comes from its definition on the reference NFT program: `name`, `standard`, a
+`uri` (at most 256 bytes) and `creators`, stored inline by the program
+(`names-wallet:docs/wallet/NFT.md:99-105`). The image is fetched from that `uri`, not by this gate;
+a definition whose state does not decode is shown as unreadable, never hidden.
+
+The wallet never opens the `uri` until the person ticks to allow it for that collection — the
+"Show its image…" link — and stays fully usable with images off
+(`names-wallet:docs/wallet/NFT.md:107-114`,
+`names-wallet:basecamp/qml/Main.qml:10971-10976`). Logos Storage upload and download are not
+used yet (`names-wallet:docs/wallet/NFT.md:114`).
+
 Licence: MIT OR Apache-2.0.

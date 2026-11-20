@@ -68,7 +68,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 35 | Linux/macOS/Windows/Android | Rust/JS tests ran on macOS only | PARTLY | READ |
 | 36 | e2e tests against real sequencer in CI | Unit CI now exists (`.github/workflows/ci.yml`: `cargo test --workspace`, `node --test` in the three JS dirs); chain e2e still not in CI | PARTLY | READ |
 | 37 | Reproducible demo script with real proving | `RUN-AFTER-3AM.txt` (ordered commands), `tests/onchain/91-real-proof.sh` guarded | PARTLY — real proving never run | READ |
-| 38 | README setup/NFT/proof/media/fetching | `README.md:1-54`, verifier README | PARTLY — no media section | READ |
+| 38 | README setup/NFT/proof/media/fetching | `README.md` (setup, layout, trust and on-chain checks, new "NFT media and metadata" section at :54), verifier README | MET | READ |
 | 39 | SDK docs mini-app worked example + capabilities | `js/gate-verify/README.md`, `docs/WALLET-INTEGRATION.md` | MET (docs) | READ |
 
 ## Adoption
@@ -85,7 +85,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 ## Summary
 
-MET: 1, 2, 3, 4, 5, 7, 8, 9, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 39.
-are deployments, real proving, module catalog/CI, the wallet-side UX, and all adoption.
-This map was written from this repo and the prize text only; no chain, other repo or upstream
-issue was inspected for it.
+MET: 1, 2, 3, 4, 5, 7, 8, 9, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 38, 39.
+The largest gaps are deployments, real proving, module catalog/CI, the wallet-side UX, and all
+adoption. This map was written from this repo, the Names Wallet worktree and the prize text; no
+chain or upstream issue was inspected for it.
