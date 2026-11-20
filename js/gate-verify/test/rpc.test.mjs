@@ -327,3 +327,24 @@ test('shared Act-transaction vector: JS agrees with the Rust no-indexer verifier
   });
   assert.equal(verdict.name, v.expected);
 });
+
+test('the bounded search finds a recent nonce and refuses a distant one', async () => {
+  const consumer = T(0xcc); const sub = T(0x5b); const actor = T(0xa1); const txHash = T(0x42);
+  const factFor = (n) => {
+    const ctx = g.contextOnchain(pinned.zoneId, pinned.gate, consumer, sub, actor, n);
+    return g.encodeFact({ binding: g.binding(pinned.nftProgram, pinned.collection, ctx), notBefore: NB, expiresAt: NB + 3600000n });
+  };
+  const base = {
+    rpcUrl: 'x', pinned, proof, submissionId: sub, txHash, consumer,
+    actTx: { actor, consumer, slot: SLOT, applied: true },
+  };
+  const recent = await verifyOnchainTx({
+    ...base, fetchFn: fakeTxRpc({ fact: factFor(4990n), now: NB + 5n, consumerNonce: 5000 }),
+  });
+  assert.equal(recent.name, 'OK');
+  const distant = await verifyOnchainTx({
+    ...base, fetchFn: fakeTxRpc({ fact: factFor(3000n), now: NB + 5n, consumerNonce: 5000 }),
+  });
+  assert.equal(distant.name, 'BINDING_MISMATCH');
+  assert.equal(distant.error, 'no matching nonce in the last 1024 Acts by this account');
+});

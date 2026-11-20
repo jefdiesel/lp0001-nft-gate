@@ -199,14 +199,14 @@ export async function verifyOnchainTx({
   } catch (e) {
     return bad('RPC_UNAVAILABLE', String(e?.message ?? e));
   }
-  // Find the nonce whose context the fact was written for; it must be below the
-  // consumer's current nonce (an Act has happened since).
+  // Search downward from current-1 (the latest Act is the likely one), at most 1024 tries.
   let nonce = null;
-  for (let n = 0n; n < state.nonce; n++) {
+  const first = state.nonce > 1024n ? state.nonce - 1024n : 0n;
+  for (let n = state.nonce - 1n; n >= first; n--) {
     const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, act.actor, n);
     if (hex(binding(pinned.nftProgram, pinned.collection, ctx)) === hex(fact.binding)) { nonce = n; break; }
   }
-  if (nonce === null) return bad('BINDING_MISMATCH', 'the fact is not a proof by this acting account');
+  if (nonce === null) return bad('BINDING_MISMATCH', 'no matching nonce in the last 1024 Acts by this account');
   const ctx = contextOnchain(pinned.zoneId, pinned.gate, consumer, submissionId, act.actor, nonce);
   return verifyContext({ rpcUrl, pinned, proof, ctx, fetchFn });
 }

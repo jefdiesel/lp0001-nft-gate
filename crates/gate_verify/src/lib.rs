@@ -282,10 +282,11 @@ pub fn verify_onchain_tx(
         Ok(f) => f,
         Err(_) => return refusal_at(pda, Outcome::NoFact, "the slot has no membership fact"),
     };
-    // Find the nonce whose context the fact was written for. The Act's context used the
-    // consumer's nonce at the time, so N < current whenever an Act has happened since.
+    // Find the nonce whose context the fact was written for. The latest Act is the likely
+    // one, so search downward from current-1, at most 1024 tries (a large on-chain nonce
+    // must not mean a long loop).
     let mut nonce = None;
-    for n in 0..current {
+    for n in (current.saturating_sub(1024)..current).rev() {
         let context = onchain_context(pinned, &u.consumer, &u.submission_id, &act.actor, n);
         if gate_core::binding::<Sha2>(&pinned.nft_program, &pinned.collection, &context) == fact.binding {
             nonce = Some(n);
@@ -293,7 +294,7 @@ pub fn verify_onchain_tx(
         }
     }
     let Some(nonce) = nonce else {
-        return refusal_at(pda, Outcome::BindingMismatch, "the fact is not a proof by this acting account");
+        return refusal_at(pda, Outcome::BindingMismatch, "no matching nonce in the last 1024 Acts by this account");
     };
     // If the indexer is also available, the two sources must agree.
     if let Ok(events) = reader.gated_events(&u.tx_hash, &u.consumer) {

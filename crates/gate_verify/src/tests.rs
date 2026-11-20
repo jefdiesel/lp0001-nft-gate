@@ -509,3 +509,52 @@ fn a_shared_act_transaction_vector_agrees_with_javascript() {
     );
     assert_eq!(verdict.outcome.name(), v["expected"].as_str().unwrap(), "{verdict:?}");
 }
+
+#[test]
+fn the_bounded_search_finds_a_recent_nonce_and_refuses_a_distant_one() {
+    let (pinned, consumer, submission, tx_hash, actor, slot) = onchain_case();
+    let proof = ProofObject {
+        gate: pinned.gate,
+        slot,
+        not_before: 0,
+        expires_at: 0,
+        tx_hash: None,
+    };
+    let fact_for = |n: u64| {
+        let ctx = onchain_context(&pinned, &consumer, &submission, &actor, n);
+        gate_core::Fact {
+            binding: gate_core::binding::<Sha2>(&pinned.nft_program, &pinned.collection, &ctx),
+            not_before: NB,
+            expires_at: NB + 3_600_000,
+        }
+        .encode()
+        .to_vec()
+    };
+    let world = |fact: Vec<u8>| -> JsonRpcReader<FakeRpc> {
+        world_events(Some(fact), Some(NB + 1), vec![]).0
+    };
+    // current 5000, match at 4990: inside the last 1024.
+    let reader = TxReader {
+        inner: world(fact_for(4990)),
+        act: Some(act_tx(true, consumer, slot)),
+        consumer_state: Some(consumer_state_bytes(5000)),
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse {
+        consumer, submission_id: submission, tx_hash,
+    });
+    assert_eq!(verdict.outcome, Outcome::Ok, "{verdict:?}");
+    // current 5000, match at 3000: outside the window.
+    let reader = TxReader {
+        inner: world(fact_for(3000)),
+        act: Some(act_tx(true, consumer, slot)),
+        consumer_state: Some(consumer_state_bytes(5000)),
+    };
+    let verdict = verify_onchain_tx(&reader, &pinned, &proof, &OnchainUse {
+        consumer, submission_id: submission, tx_hash,
+    });
+    assert_eq!(verdict.outcome, Outcome::BindingMismatch, "{verdict:?}");
+    assert_eq!(
+        verdict.error.as_deref(),
+        Some("no matching nonce in the last 1024 Acts by this account")
+    );
+}
