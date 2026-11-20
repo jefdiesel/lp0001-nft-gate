@@ -4,7 +4,7 @@
 # Metal kernels with `prove`, F §11):
 #   ssh build-host '$BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/90-build-cli-prove.sh > $BUILD_ROOT/lp0001/gate/run/build-cli-prove.log 2>&1'
 set -euo pipefail
-G=$BUILD_ROOT/lp0001/gate
+G=${LP0001_GATE_HOME:-$BUILD_ROOT/lp0001/gate}
 export PATH=$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 export CARGO_TARGET_DIR=$G/cli-prove-target CARGO_BUILD_JOBS=4 TMPDIR=$G/tmp
 mkdir -p $G/tmp

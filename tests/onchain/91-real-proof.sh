@@ -6,7 +6,7 @@
 # In-process CPU prover, 4 threads, never r0vm; kill above 11 GB footprint or under 15% free
 # (the same sampler as job-a/run-real-proof.sh). Records time, peak memory, tx size.
 set -u
-G=$BUILD_ROOT/lp0001/gate
+G=${LP0001_GATE_HOME:-$BUILD_ROOT/lp0001/gate}
 . $G/repo/tests/onchain/env.sh
 # dev mode OFF and no r0vm server for THIS command only:
 unset RISC0_DEV_MODE RISC0_SERVER_PATH
@@ -15,8 +15,14 @@ if command -v r0vm >/dev/null 2>&1; then echo "STOP: r0vm on PATH"; exit 1; fi
 [ -x $G/out/gate-cli-prove ] || { echo "STOP: build gate-cli-prove first (90-build-cli-prove.sh)"; exit 1; }
 LOG=$G/run/real-proof-$(date -u +%Y%m%dT%H%MZ); mkdir -p "$LOG"
 N=$(openssl rand -hex 32); echo "$N" > "$LOG/app-nonce"
-/usr/bin/time -l $G/out/gate-cli-prove prove --holder h6 --payer h6 --caller-identity real-proof \
-    --purpose "real proof" --app-nonce "$N" --out "$LOG/proof.json" > "$LOG/client.log" 2> "$LOG/time.log" &
+# PROVE_HOLDER (default h6) proves; PROVE_ONCHAIN_ACTOR set = an on-chain context for that actor's
+# next Act at the consumer (tests/onchain/rc3/E2E-rc3.sh), else the off-chain context above.
+HOLDER=${PROVE_HOLDER:-h6}
+if [ -n "${PROVE_ONCHAIN_ACTOR:-}" ]; then CTX=(--onchain-actor "$PROVE_ONCHAIN_ACTOR")
+else CTX=(--caller-identity real-proof --purpose "real proof" --app-nonce "$N"); fi
+echo "holder $HOLDER context ${CTX[*]}" > "$LOG/request.txt"
+/usr/bin/time -l $G/out/gate-cli-prove prove --holder "$HOLDER" --payer "$HOLDER" "${CTX[@]}" \
+    --out "$LOG/proof.json" > "$LOG/client.log" 2> "$LOG/time.log" &
 TPID=$!
 sleep 2
 PID=$(pgrep -P $TPID gate-cli-prove || echo $TPID)

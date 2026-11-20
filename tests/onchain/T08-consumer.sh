@@ -27,6 +27,9 @@ note "Act gas: $(grep '^fee ' $O/decode-act.out)"
 run both-ways $CLI verify --slot $SLOT --tx-hash $(tx_of act-A)
 if events_served; then
   expect_text both-ways "outcome OK"
+elif has both-ways "outcome OK" && has both-ways "getEvents unavailable"; then
+  # Job K: with no getEvents, verify decodes the Act transaction and reads A's consumer state.
+  note "both-ways: no getEvents on $RPC; verified from the Act transaction and consumer state"
 elif has both-ways "outcome RPC_UNAVAILABLE"; then
   # A standalone sequencer (the 3310 kit) has no getEvents: that is the LEZ indexer's method,
   # and the indexer follows a Bedrock node, which this chain does not post to.

@@ -9,8 +9,11 @@ set -uo pipefail
 PAY=$(acct pay)
 run deploy-consumer "$SPEL" deploy "$G/out/consumer.bin" --fee-payer "$PAY"
 CONSUMER=$(tail -1 "$O/deploy-consumer.out" | tr -d '[:space:]')
-run deploy-hostile "$SPEL" deploy "$G/out/t4-hostile.bin" --fee-payer "$PAY"
-HOSTILE=$(tail -1 "$O/deploy-hostile.out" | tr -d '[:space:]')
+HOSTILE=""
+if [ "${LP0001_NO_TEST_PROGRAMS:-0}" != 1 ]; then
+  run deploy-hostile "$SPEL" deploy "$G/out/t4-hostile.bin" --fee-payer "$PAY"
+  HOSTILE=$(tail -1 "$O/deploy-hostile.out" | tr -d '[:space:]')
+fi
 python3 -I - "$GATE_CONFIG" <<PY
 import json,sys
 c=json.load(open(sys.argv[1])); c["consumer"]="$CONSUMER"; c["t4_hostile"]="$HOSTILE"

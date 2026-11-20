@@ -17,4 +17,5 @@ build() { # dir bin out
   echo "$3: $(wc -c < "$G/out/$3.bin") bytes, sha256 $(shasum -a 256 "$G/out/$3.bin" | cut -d' ' -f1), program id $("$SPEL" program-id "$G/out/$3.bin")"
 }
 build guests/gate lp0001-gate gate
-build guests/gate-unsafe-test lp0001-gate-unsafe-test gate-unsafe-test
+# TEST ONLY programs are never built for a public chain (LP0001_NO_TEST_PROGRAMS=1, rc3/env-rc3.sh).
+[ "${LP0001_NO_TEST_PROGRAMS:-0}" = 1 ] || build guests/gate-unsafe-test lp0001-gate-unsafe-test gate-unsafe-test

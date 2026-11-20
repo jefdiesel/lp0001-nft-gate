@@ -18,7 +18,8 @@ build() {
 export LP0001_GATE=$(hexid "$(cfg gate)") LP0001_NFT_PROGRAM=$(hexid $NFT) LP0001_COLLECTION=$(hexid "$(cfg collection)")
 export LP0001_SUBMISSION_ID=$(cfg submission_id) LP0001_ZONE_ID=$(cfg zone_id)
 build guests/consumer lp0001-consumer consumer
-# TEST ONLY (T4): the attacker stand-in, never deployed beyond this chain.
+# TEST ONLY (T4): the attacker stand-in, never deployed beyond this chain (never built for a public one).
+[ "${LP0001_NO_TEST_PROGRAMS:-0}" = 1 ] && exit 0
 ATK=$($CLI wallet account list 2>/dev/null | grep "\[atk\]" | awk '{print $2}' | sed 's|^Public/||')
 export LP0001_T4_REAL_NFT=$LP0001_NFT_PROGRAM LP0001_T4_ATTACKER=$(hexid "$ATK") LP0001_T4_COLLECTION=$LP0001_COLLECTION
 build tests-only/hostile-guest lp0001-t4-hostile t4-hostile

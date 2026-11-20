@@ -9,16 +9,28 @@ J=$BUILD_ROOT/lp0001/job-a
 R=$G/repo
 export LEE_WALLET_HOME_DIR=$G/wallet
 export GATE_CONFIG=$G/gate-config.json
-export GATE_CLI_SEQUENCER=http://127.0.0.1:3310
-export RISC0_DEV_MODE=1
-export RISC0_SERVER_PATH=$J/tools/r0vm
+# LP0001_RPC, LP0001_NFT and LP0001_CLI point a run at another chain (tests/onchain/rc3/env-rc3.sh:
+# our public rc3 chain); the defaults are the throwaway chain's.
+export GATE_CLI_SEQUENCER=${LP0001_RPC:-http://127.0.0.1:3310}
 export PATH=$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
-CLI=$G/out/gate-cli
+CLI=${LP0001_CLI:-$G/out/gate-cli}
 SPEL=$J/out/spel
-RPC=http://127.0.0.1:3310
+RPC=$GATE_CLI_SEQUENCER
 # The reference NFT program on the throwaway chain (native build, F §0, §6).
-NFT=ErycMYqXUUtducaYmpHZjRgdbLXchrMiV4NZRnmRDNmu
+NFT=${LP0001_NFT:-ErycMYqXUUtducaYmpHZjRgdbLXchrMiV4NZRnmRDNmu}
 export GATE_NFT_PROGRAM=$NFT
 if command -v r0vm >/dev/null 2>&1; then echo "STOP: r0vm is on PATH (brief §6)"; exit 1; fi
-[ -x "$RISC0_SERVER_PATH" ] || { echo "STOP: $RISC0_SERVER_PATH missing: no simulation possible"; exit 1; }
+if [ "${LP0001_REAL_PROVING:-0}" = 1 ]; then
+  # A chain that verifies real receipts (the public rc3 chain): no development receipts, no r0vm
+  # server, only the in-process CPU prover on 4 threads, and only gate-cli built with `prove`
+  # (a CLI without it would fall back to an external r0vm on all cores: the Mini's panic path).
+  unset RISC0_DEV_MODE RISC0_SERVER_PATH
+  export RISC0_PROVER=local RAYON_NUM_THREADS=4
+  case $CLI in *gate-cli-prove) ;; *) echo "STOP: real proving needs gate-cli-prove, not $CLI"; exit 1 ;; esac
+  [ -x "$CLI" ] || { echo "STOP: $CLI missing (90-build-cli-prove.sh)"; exit 1; }
+else
+  export RISC0_DEV_MODE=1
+  export RISC0_SERVER_PATH=$J/tools/r0vm
+  [ -x "$RISC0_SERVER_PATH" ] || { echo "STOP: $RISC0_SERVER_PATH missing: no simulation possible"; exit 1; }
+fi
 mkdir -p "$G/run"

@@ -58,9 +58,12 @@ OS=$(sw_vers -productVersion 2>/dev/null || uname -s)
 # --- 32: on-chain verification gas/CU -----------------------------------------
 # T08-consumer.sh sources lib.sh T08 (TNAME=T08), so its log is run/T08/log.txt and
 # finish_test writes "T08 PASS…"; it records "Act gas: fee <n>" from decode-tx.
-T08_LOG=$G/run/T08/log.txt
-ACT_GAS=$(grep -oE 'fee [0-9]+' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
-T08_VERDICT=$(grep -oE '^T08 (PASS|FAIL)' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
+# On the public rc3 chain the Act comes from rc3/E2E-rc3.sh instead (BENCH_T08_LOG=$G/run/E2E/log.txt,
+# BENCH_T08_NAME=E2E); its "Act gas: fee <n>" is what the payer was charged.
+T08_LOG=${BENCH_T08_LOG:-$G/run/T08/log.txt}
+T08_NAME=${BENCH_T08_NAME:-T08}
+ACT_GAS=$(grep -oE 'Act gas: fee [0-9]+' "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $4}' || true)
+T08_VERDICT=$(grep -oE "^$T08_NAME (PASS|FAIL|BLOCKED)" "$T08_LOG" 2>/dev/null | tail -1 | awk '{print $2}' || true)
 
 # --- results ------------------------------------------------------------------
 if [ ! -f "$CSV" ]; then
