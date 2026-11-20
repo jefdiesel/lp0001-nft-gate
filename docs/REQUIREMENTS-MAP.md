@@ -66,7 +66,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 33 | Deployed and tested on testnet 0.4 | Not live; no deployments here (README:15) | NOT MET | READ |
 | 34 | mkLogosModule build | No flake/module-builder config here | NOT MET | READ |
 | 35 | Linux/macOS/Windows/Android | Rust/JS tests ran on macOS only | PARTLY | READ |
-| 36 | e2e tests against real sequencer in CI | T00–T15 scripts exist, no `.github/workflows`, chain tests not run | NOT MET | READ |
+| 36 | e2e tests against real sequencer in CI | Unit CI now exists (`.github/workflows/ci.yml`: `cargo test --workspace`, `node --test` in the three JS dirs); chain e2e still not in CI | PARTLY | READ |
 | 37 | Reproducible demo script with real proving | `RUN-AFTER-3AM.txt` (ordered commands), `tests/onchain/91-real-proof.sh` guarded | PARTLY — real proving never run | READ |
 | 38 | README setup/NFT/proof/media/fetching | `README.md:1-54`, verifier README | PARTLY — no media section | READ |
 | 39 | SDK docs mini-app worked example + capabilities | `js/gate-verify/README.md`, `docs/WALLET-INTEGRATION.md` | MET (docs) | READ |
