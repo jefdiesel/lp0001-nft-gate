@@ -7,13 +7,28 @@
 # Act refused on chain), NO_FACT (empty slot / no event), EXPIRED (sequencer refused, late Act).
 . "$(dirname "$0")/env.sh"; . "$(dirname "$0")/lib.sh" T10
 T8=$G/run/T08
-SLOT=$(python3 -I -c "import json;print(json.load(open('$T8/proof.json'))['slot'])")
-run v-B $CLI verify --slot $SLOT --actor actB --nonce 0
-expect_text v-B "outcome BINDING_MISMATCH"
-grep -q "consumer: BINDING_MISMATCH" $T8/act-B.out || { VERDICT=FAIL; note "consumer did not say BINDING_MISMATCH for B"; }
-note "B's Act was refused, so it has no Gated event for verify to read (no off-chain B case)"
-grep -q "outcome OK" $T8/both-ways.out && grep -q "consumer nonce 0 -> 1" $T8/act-A.out || { VERDICT=FAIL; note "OK pair missing"; }
-EMPTY=$(grep -oE -- "--slot [0-9a-f]{64}" $T8/act-empty.out | head -1 | cut -d' ' -f2)
+# Since gate-cli verify reads the actor and nonce from the Act's Gated event (--tx-hash; it no
+# longer takes them from the caller), the library can be asked on chain only about an Act that
+# applied. B's Act, the empty-slot Act and the late Act are refused and emit no event, so for
+# those three codes the library half is the native one (T00: both verifiers and the consumer
+# run the shared vector file) and this test checks the chain half hard.
+# OK: A's Act applied (its consumer nonce up by one, N0 -> N0+1; see T08), and the library
+# re-checks it from its event.
+N0=$(grep -oE "^Act by [^ ]+ at consumer nonce [0-9]+" $T8/act-A.out | grep -oE "[0-9]+$")
+[ -n "$N0" ] && grep -q "consumer nonce $N0 -> $((N0 + 1));" $T8/act-A.out || { VERDICT=FAIL; note "OK pair: A's Act did not apply"; }
+if grep -q "outcome OK" $T8/both-ways.out; then :
+elif grep -q "BLOCKED: both-ways" $T8/log.txt; then blocked "OK pair, library half: T8's verify --tx-hash could not read events on this chain (see T08)"
+else VERDICT=FAIL; note "OK pair: the library did not say OK for A's Act"; fi
+# BINDING_MISMATCH: B's Act on A's fact, refused by the consumer with that code.
+grep -q "consumer: BINDING_MISMATCH" $T8/act-B.out && [ "$(cat $T8/act-B.rc)" != 0 ] || { VERDICT=FAIL; note "BINDING_MISMATCH pair: the consumer did not refuse B's Act with BINDING_MISMATCH"; }
+# NO_FACT: an Act on a never-written slot, refused (by the consumer, or by LEZ first: recorded).
+[ "$(cat $T8/act-empty.rc)" != 0 ] || { VERDICT=FAIL; note "NO_FACT pair: the empty-slot Act applied"; }
 note "empty slot: $(grep -m1 -oE 'consumer: [A-Z_]+|not admitted|neither a declared[^,]*' $T8/act-empty.out)"
-grep -q "late Act refused" $T8/v-late.out 2>/dev/null || true
+# EXPIRED: a real late fact existed and the Act after its expires_at was refused.
+if [ -s $T8/late.json ] && [ -e $T8/act-late.rc ]; then
+  [ "$(cat $T8/act-late.rc)" != 0 ] || { VERDICT=FAIL; note "EXPIRED pair: the late Act applied"; }
+  grep -q "chain time never reached" $T8/log.txt && { VERDICT=FAIL; note "EXPIRED pair: T8's late Act was not late"; }
+else
+  VERDICT=FAIL; note "EXPIRED pair missing: T8 made no late fact or tried no late Act"
+fi
 finish_test
