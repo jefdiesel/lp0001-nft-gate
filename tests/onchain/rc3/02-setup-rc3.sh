@@ -41,7 +41,7 @@ if [ "${PAYBAL:-0}" -lt 50000000 ]; then
   [ -n "$BEFORE" ] && [ "$BEFORE" -ge $(( AMT + 10 * FMIN )) ] || { VERDICT=FAIL; note "faucet holds '${BEFORE}': below amount + 10 x MIN_BALANCE, not drawing"; finish_test; exit 1; }
   run fund fw auth-transfer send --from "Public/$FACC" --to-pk "$PAY_PK" --amount "$AMT"
   AFTER=$(fw account get --account-id "Public/$FACC" 2>/dev/null | grep -oE "^Balance [0-9]+" | awk '{print $2}')
-  echo "$(date -u +%FT%TZ) faucet Public/$FACC -> pay Public/$PAY (pk $PAY_PK) amount $AMT rc $(cat "$O/fund.rc") $(grep -oE '[0-9a-f]{64}' "$O/fund.out" | head -1) $(grep -oE 'included in block [0-9]+' "$O/fund.out" | head -1); faucet balance $BEFORE -> $AFTER" \
+  echo "$(date -u +%FT%TZ) faucet Public/$FACC -> pay Public/$PAY (pk $PAY_PK) amount $AMT rc $(cat "$O/fund.rc") tx $(grep -oE 'Transaction hash is [0-9a-f]{64}' "$O/fund.out" | awk '{print $4}') $(grep -oE 'included in block [0-9]+' "$O/fund.out" | head -1); faucet balance $BEFORE -> $AFTER" \
     | tee -a "$G/run/FAUCET-TRANSFERS.log" | tee -a "$LOG"
   [ "$(cat "$O/fund.rc")" = 0 ] || stop fund "pay is unfunded"
 fi
