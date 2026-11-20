@@ -799,12 +799,25 @@ async fn verify(
         Kind::Offchain(_) => Ok(Vec::new()),
         Kind::Onchain(u) => gate_verify::JsonRpcReader(ClientRpc(events_client)).gated_events(&u.tx_hash, &u.consumer),
     };
-    let reader = VerifyReader { state_time: read.map_err(|e| e.to_string()), events };
+    // A standalone sequencer has no indexer: decode the Act transaction itself.
+    let act = match &kind {
+        Kind::Offchain(_) => Ok(None),
+        Kind::Onchain(u) => act_transaction(client, HashType(u.tx_hash)).await.map(Some).map_err(|e| e.to_string()),
+    };
+    let reader = VerifyReader {
+        state_time: read.map_err(|e| e.to_string()),
+        events: events.clone(),
+        act,
+    };
     let proof = gate_verify::ProofObject {
         gate: pinned.gate, slot, not_before: 0, expires_at: 0, tx_hash: None,
     };
     let verdict = match kind {
         Kind::Offchain(context) => gate_verify::verify_context(&reader, &pinned, &slot, &context),
+        Kind::Onchain(u) if events.is_err() => {
+            println!("getEvents unavailable; verifying from the Act transaction and consumer state");
+            gate_verify::verify_onchain_tx(&reader, &pinned, &proof, &u)
+        }
         Kind::Onchain(u) => gate_verify::verify_onchain_use(&reader, &pinned, &proof, &u),
     };
     println!("outcome {} ({})", verdict.outcome.name(), verdict.outcome.plain());
@@ -823,6 +836,7 @@ async fn verify(
 struct VerifyReader {
     state_time: Result<(Vec<u8>, u64), String>,
     events: Result<Vec<gate_verify::EventRecord>, String>,
+    act: Result<Option<gate_verify::ActTransaction>, String>,
 }
 
 impl gate_verify::ChainReader for VerifyReader {
@@ -835,6 +849,24 @@ impl gate_verify::ChainReader for VerifyReader {
     fn gated_events(&self, _: &[u8; 32], _: &[u8; 32]) -> Result<Vec<gate_verify::EventRecord>, String> {
         self.events.clone()
     }
+    fn act_transaction(&self, _: &[u8; 32]) -> Result<Option<gate_verify::ActTransaction>, String> {
+        self.act.clone()
+    }
+}
+
+/// Decode a public Act transaction from getTransaction, checking the block's reverted list.
+async fn act_transaction(client: &GuardedClient, hash: HashType) -> Result<gate_verify::ActTransaction> {
+    use wallet::WalletSequencerClient as _;
+    let (tx, block_id) = client.inner.get_transaction(hash).await.map_err(|e| anyhow!("{e}"))?.ok_or_else(|| anyhow!("not included"))?;
+    let LeeTransaction::Public(p) = tx else { bail!("not a public transaction") };
+    let ConsumerMessage::Act { slot } = borsh::from_slice(&p.message.execution.root.message).context("not an Act")?;
+    let block = client.inner.get_block(block_id).await.map_err(|e| anyhow!("{e}"))?.ok_or_else(|| anyhow!("block {block_id} missing"))?;
+    let reverted = block.body.transactions.iter().position(|t| t.hash() == hash).is_some_and(|i| block.body.is_reverted(i));
+    Ok(gate_verify::ActTransaction {
+        actor: *p.message.execution.root.to.account_id.value(),
+        consumer: *p.message.execution.root.to.program_account_id.value(),
+        slot, applied: !reverted, block_id: Some(block_id),
+    })
 }
 
 /// A synchronous `RpcJson` over the sequencer's jsonrpsee HTTP client, for the

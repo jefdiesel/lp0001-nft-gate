@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # T10 (after T8): the consumer on chain and the library agree on the same slot bytes.
 # Native half: consumer_program's t10 test and both verifiers run the shared vector file (T00).
-# Chain half, from T8's runs: OK (Act applied / verify from its event), BINDING_MISMATCH (B's
+# Chain half, from T8's runs: OK (Act applied / verify from its event or the Act tx on a
+# standalone chain), BINDING_MISMATCH (B's
 # Act refused on chain), NO_FACT (empty slot / no event), EXPIRED (sequencer refused, late Act).
 . "$(dirname "$0")/env.sh"; . "$(dirname "$0")/lib.sh" T10
 T8=$G/run/T08

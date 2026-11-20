@@ -4,8 +4,9 @@
 # A's Act applies once (nonce 0 -> 1, the gate PDA read from a public transaction); A's second
 # Act fails BINDING_MISMATCH; an Act on a never-written slot fails (NO_FACT, or LEZ's own
 # refusal, recorded); an Act after expiry is refused by the sequencer. Records the gas.
-# Also "same proof, both ways": the on-chain use is re-checked from its Gated event.
-# The RPC used by `verify` must serve getEvents (or pass --events-url with an indexer).
+# Also "same proof, both ways": the on-chain use is re-checked. gate-cli verify reads
+# the Gated event where an indexer serves it; on a standalone chain (no getEvents) it falls
+# back to decoding the Act transaction and checking A's consumer state (Job K).
 . "$(dirname "$0")/env.sh"; . "$(dirname "$0")/lib.sh" T08
 run prove $CLI prove --holder h1 --payer h1 --onchain-actor actA --out $O/proof.json
 expect_ok prove
