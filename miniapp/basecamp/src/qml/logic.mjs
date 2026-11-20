@@ -126,3 +126,23 @@ export function check(state, expected, now) {
     }
     return { name: "OK", code: 0, fact: fact }
 }
+
+/** Plain-language progress line for the QML view (no raw state codes). */
+export function progressLine(state, phase, elapsedSeconds) {
+  var t = Math.floor((elapsedSeconds || 0) / 60) + ':' + String((elapsedSeconds || 0) % 60).padStart(2, '0')
+  if (state === 'pending') return 'Waiting for you to approve in the wallet…'
+  if (state === 'running' && phase === 'prove') return 'Proving (about 10 minutes)… ' + t
+  if (state === 'running') return 'Checking your NFT… ' + t
+  if (state === 'done') return 'Ready.'
+  if (state === 'failed') return 'Not done: the proof could not be completed.'
+  if (state === 'rejected') return 'You declined the request. Nothing was sent.'
+  if (state === 'expired') return 'The request expired. Try again.'
+  if (state === 'cancelled') return 'You cancelled the request. Nothing was sent.'
+  return 'Preparing…'
+}
+
+/** What a finished proof tells the user, without revealing the NFT or account. */
+export function proofLine(proof) {
+  if (!proof || typeof proof.slot !== 'string' || proof.slot.length !== 64) return 'Proof ready.'
+  return 'Proof ready. Pass id ' + proof.slot.slice(0, 8) + '…; no NFT or account is revealed.'
+}

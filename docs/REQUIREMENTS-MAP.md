@@ -35,8 +35,8 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 17 | Proof prompt distinct, states disclosures, separate approval | Proof request approved on its own sheet, not with transfers (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:531`, `lib.rs:1328`) | MET | READ |
 | 18 | Per-dApp capabilities legible and revocable | Per-app grants `nft_list`/`nft_transfers`/`membership_proof`, individually revocable (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1320-1325`, `provider_nft.rs:577`) | MET | READ |
 | 19 | Program source verification in approval prompt | Approval shows Program Registry verification (`names-wallet:basecamp/qml/Main.qml:9423`, `:11138`); client pre-check (`client/src/main.rs:393-401`) | MET | READ |
-| 20 | UX quality, non-expert | Mini-app logic + tests (`miniapp/test/logic.test.mjs`); no deployed app | PARTLY | READ |
-| 21 | Integration guide, SDK + proof + gating | `js/gate-verify/README.md`, `docs/DESIGN.md`, `docs/WALLET-INTEGRATION.md`, `docs/OWNER-DECISIONS.md` | MET (docs); deployment pending | READ |
+| 20 | UX quality, non-expert | `miniapp/basecamp/src/qml/Main.qml` now shows immediate button feedback, capped `busy` retries, plain empty/error states and plain progress; `miniapp/test/ux.test.mjs` checks the text helpers (11/11 node tests pass). QML layout itself is not unit-tested; no deployed app | MET (code + tests); QML runner and deployment pending | READ |
+| 21 | Integration guide, SDK + proof + gating | `docs/INTEGRATION-GUIDE.md`: show/send/receive/claim-deed/private-proof with runnable snippets and fixture outputs, from the wallet Provider SDK, `js/gate-verify` and `logos-sdk-js`; plus `js/gate-verify/README.md`, `docs/WALLET-INTEGRATION.md` | MET (docs); deployment pending | READ |
 
 ## Reliability
 

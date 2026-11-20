@@ -9,8 +9,11 @@ Spec §5. Two forms, neither deployed:
   from its `Act` transaction hash. The RPC must allow the page's origin (a local sequencer may
   need a CORS-allowing proxy of your own).
 - `basecamp/`: a Basecamp `ui_qml` skeleton (metadata, `Main.qml`, QML-safe `logic.mjs`). It
-  calls only the `membership-proof` methods (docs/WALLET-INTEGRATION.md), which the Names
-  Wallet does not have yet, and needs a C++ backend for chain reads (as the Testimonial app has).
+  calls only the `membership-proof` methods (docs/WALLET-INTEGRATION.md), which the Names Wallet
+  declares but cannot yet complete: with no pinned gate every proof fails with `GATE_NOT_PINNED`.
+  It needs a C++ backend for chain reads (as the Testimonial app has). The view shows a plain
+  message when the bridge or the collection config is missing, gives immediate button feedback,
+  caps `busy` retries, and never leaves a raw state code on screen.
 
 Screens: (1) request: "Check in this app" / "Sign the members' book on chain"; (2) off-chain
 use: "Valid" or the code and its plain meaning, "Establishes: holder of [collection], until
@@ -19,4 +22,8 @@ use: the gated action (acting account, block, pass) and the same pass checked in
 code ("same proof, both ways"). Failure demos come from the wallet's codes and the verifier's
 (expired, superseded = BINDING_MISMATCH, wrong collection, NOT_A_MEMBER).
 
-Tests: `node --test test/*.test.mjs` (page logic; the QML-safe logic against the shared vectors).
+Tests: `node --test test/*.test.mjs` (page logic, the QML-safe logic against the shared vectors,
+and the plain-text UX helpers). QML layout itself is not unit-tested; it needs a Qt runner.
+
+See `docs/INTEGRATION-GUIDE.md` in this repo for the wallet SDK calls to show, send, receive and
+prove NFTs, with the fixture outputs each step should produce.
