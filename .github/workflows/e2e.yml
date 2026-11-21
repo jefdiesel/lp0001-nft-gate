@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Row 36 (DRAFT): LP-0001 on-chain tests against a fresh LEZ v0.4.0-rc3 standalone sequencer.
+# The sequencer binary is built at the pinned tag and cached; programs are built with risc0. Every
+# private step uses development receipts (RISC0_DEV_MODE=1): no real proving, no secret. The payer
+# is a published LEZ local-test genesis account. This has NOT run yet; the reviewer pushes it.
+name: e2e
+
+on: push
+
+# A newer push replaces a run still in progress.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LEZ_TAG: v0.4.0-rc3
+  LEZ_COMMIT: "bafd07be"
+  NFT_REPO: https://github.com/logos-blockchain/lez-programs.git
+  NFT_REV: dea23c22a47c728c9b6f925d0ef1677f99613f09
+  SPEL_REPO: https://github.com/logos-co/spel.git
+  SPEL_REV: c90ca0bc16c07c89d16425dd28a5f6a2d8428801
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries (the wallet's Keycard support and the RPC client)
+        run: sudo apt-get update -q && sudo apt-get install -y -q libpcsclite-dev pkg-config
+
+      - name: Install rzup and the risc0 toolchain (for the guest builds)
+        run: |
+          curl -L https://risczero.com/install | bash
+          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.risc0/bin:$PATH"
+          rzup install cargo-risczero 3.0.5
+          rzup install rust
+
+      - name: Restore the standalone sequencer (per LEZ commit)
+        id: seqcache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/lez-seq
+          key: lez-seq-standalone-${{ env.LEZ_COMMIT }}
+      - name: Build sequencer_service --features standalone at ${{ env.LEZ_TAG }}
+        if: steps.seqcache.outputs.cache-hit != 'true'
+        run: |
+          git clone --quiet --depth 1 --branch "$LEZ_TAG" https://github.com/logos-blockchain/logos-execution-zone.git "$RUNNER_TEMP/lez"
+          test "$(git -C "$RUNNER_TEMP/lez" rev-parse --short=8 HEAD)" = "$LEZ_COMMIT"
+          (cd "$RUNNER_TEMP/lez" && cargo build --release --features standalone -p sequencer_service)
+          mkdir -p ~/lez-seq
+          cp "$RUNNER_TEMP/lez/target/release/sequencer_service" ~/lez-seq/
+          cp "$RUNNER_TEMP/lez/lez/sequencer/service/networks/local.json" ~/lez-seq/
+          rm -rf "$RUNNER_TEMP/lez"
+      - name: Save the standalone sequencer
+        if: steps.seqcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/lez-seq
+          key: lez-seq-standalone-${{ env.LEZ_COMMIT }}
+
+      - name: Install the SPEL CLI (pinned revision: actor-model deploy and program-id)
+        run: |
+          cargo install --locked --git "$SPEL_REPO" --rev "$SPEL_REV" spel-cli
+          spel --help > /dev/null
+
+      - name: Fetch the reference NFT program source (pinned revision)
+        run: |
+          git clone --quiet "$NFT_REPO" "$RUNNER_TEMP/lez-programs"
+          git -C "$RUNNER_TEMP/lez-programs" checkout --quiet "$NFT_REV"
+
+      - uses: Swatinem/rust-cache@v2
+      - name: Build gate-cli
+        run: |
+          cargo build --release --manifest-path client/Cargo.toml
+          cp target/release/gate-cli "$RUNNER_TEMP/gate-cli"
+
+      - name: On-chain tests (fresh local chain, development receipts)
+        env:
+          SEQ_BIN: /home/runner/lez-seq/sequencer_service
+          LOCAL_JSON: /home/runner/lez-seq/local.json
+          CLI: ${{ runner.temp }}/gate-cli
+          SPEL: spel
+          NFT_SRC: ${{ runner.temp }}/lez-programs/programs/nft
+          RPC: http://127.0.0.1:3310
+          WORKSPACE: ${{ github.workspace }}
+          E2E_DIR: ${{ runner.temp }}/lp0001-e2e
+          RISC0_DEV_MODE: "1"
+        run: bash tests/onchain/ci-run.sh
+
+      - name: Logs
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/lp0001-e2e/run/RESULTS.txt" || true
+          tail -200 "$RUNNER_TEMP/lp0001-e2e/run/log.txt" || true
+          tail -200 "$RUNNER_TEMP/lp0001-e2e/sequencer.log" || true
