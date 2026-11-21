@@ -80,12 +80,9 @@ Item {
         verdictText = ""
         nonce = randomNonce()
         var body = { collection: config.collection, purpose: "Check in this app", nonce: nonce, ttl: 3600000 }
-        if (wallet.state === "connected") { sendProof(body); return }
-        wallet.connect("Check in this app", {}, {
-            waiting: function(r) { stage = "Waiting for you to approve in the wallet…" },
-            done: function(r) { sendProof(body) },
-            failed: proofFailed
-        })
+        // No connect: a membership proof needs no account access (LP-0001's privacy property);
+        // the wallet asks the person about the proof itself.
+        sendProof(body)
     }
 
     // Status only while this page is open and in front (Qt.application.state).
