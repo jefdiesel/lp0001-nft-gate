@@ -9,29 +9,43 @@ Tags: **[laptop] = no chain**, **[chain] = needs the throwaway chain on 3310**,
 **[proving] = needs real proving (owner's word only)**. Steps 1, 2 and 11 need no chain. Steps 3-10,
 12 and 13 need the chain. Only step 13 makes a real proof.
 
-Across every step, `L` is the laptop and `H` the build host (`ssh build-host`); `$G` is
-`$BUILD_ROOT/lp0001/gate` on H. The chain, `r0vm` and the operator wallet belong to
-job-a (read-only). No `r0vm` on any PATH; simulation only through `tests/onchain/env.sh`. All
-results land in `$G/run/RESULTS.txt` and `$G/run/T*/`. Builds on H go through `mini-lock.sh`.
+Across every step, `L` is your laptop and `H` a build host: the machine with the chain, the
+simulation prover and enough memory to prove. Define the two repo paths once, on the machine where
+you use them:
+
+```sh
+# on L
+R=<where you cloned this repo on your laptop>
+# on H
+G=<where you cloned this repo on the build host>
+```
+
+The chain, the simulation prover and the operator wallet belong to another project (read-only).
+No prover binary on any PATH; simulation only through `tests/onchain/env.sh`. All results land in
+`$G/run/RESULTS.txt` and `$G/run/T*/`. Run heavy proving one job at a time; it needs about 10 GB of
+memory.
 
 ## Preconditions — [chain]
 
 Check each before step 1. Stop if one fails.
 
 ```sh
-ssh build-host 'curl -s -X POST http://127.0.0.1:3310/ -H content-type:application/json -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getLastBlockId\",\"params\":[]}"'   # a block id: chain up
-ssh build-host 'ls -la $BUILD_ROOT/lp0001/job-a/tools/r0vm; command -v r0vm; df -h / | tail -1'   # r0vm present in job-a only, not on PATH; >15 GB free
-ssh build-host 'ls $BUILD_ROOT/dev/fix-names/.heavy.lock 2>/dev/null; pgrep -fl "prove-seqsig|outbound_host|r0vm|gate-cli-prove"'   # lock free, nothing proving
-ls -d $BUILD_ROOT/target   # laptop drive mounted
+# on H
+curl -s -X POST http://127.0.0.1:3310/ -H content-type:application/json -d '{"jsonrpc":"2.0","id":1,"method":"getLastBlockId","params":[]}'   # a block id: chain up
+command -v r0vm   # empty: no prover on PATH; a simulation copy is available on H
+df -h / | tail -1   # >15 GB free
+pgrep -fl "prove-seqsig|outbound_host|r0vm|gate-cli-prove"   # nothing proving
+# on L
+ls -d target   # laptop build directory present
 ```
 
-You should see a block id, `r0vm` listed only under job-a with an empty `command -v`, no lock file
-and no proving processes, and the laptop target directory.
+You should see a block id, an empty `command -v`, over 15 GB free, no proving processes, and the
+laptop build directory.
 
 ## 1. Unit tests, vectors, JS — [laptop]
 
 ```sh
-cd $SRC_ROOT/lez-nft-gate && tests/onchain/T00-unit.sh
+cd $R && tests/onchain/T00-unit.sh   # on L
 ```
 
 About two minutes warm. You should see the vectors check pass, `cargo test --workspace` pass and
@@ -40,7 +54,7 @@ the three `node --test` suites pass.
 ## 2. Build and copy gate-cli — [laptop]
 
 ```sh
-$SRC_ROOT/lez-nft-gate/tests/onchain/00-laptop-sync-and-build-client.sh
+$R/tests/onchain/00-laptop-sync-and-build-client.sh   # on L
 ```
 
 Ten to twenty minutes cold. You should see a sha256 of the client binary and the first three lines
@@ -50,7 +64,8 @@ of `gate-cli --help` printed from H: the binary was copied to `$G/out/gate-cli` 
 ## 3. Build the gate guests — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/01-build-gate-guests.sh > $BUILD_ROOT/lp0001/gate/run/build-gate.log 2>&1; tail -4 $BUILD_ROOT/lp0001/gate/run/build-gate.log'
+# on H
+$G/tests/onchain/01-build-gate-guests.sh > $G/run/build-gate.log 2>&1; tail -4 $G/run/build-gate.log
 ```
 
 You should see two lines, "gate: … program id …" and "gate-unsafe-test: …". A guest build without
@@ -58,11 +73,12 @@ You should see two lines, "gate: … program id …" and "gate-unsafe-test: …"
 
 ## 4. Wallet, funding, collection, holdings — [chain]
 
-Owner's OK needed: one public transfer of 2,000,000,000 native from job-a's operator wallet. The
-script stops without the variable.
+Owner's OK needed: one public transfer of 2,000,000,000 native from the chain's operator wallet.
+The script stops without the variable.
 
 ```sh
-ssh build-host 'cd $BUILD_ROOT/lp0001/gate/repo/tests/onchain && OWNER_OK_FUND_FROM_OPERATOR=1 ./02-setup-wallet.sh'
+# on H
+cd $G/tests/onchain && OWNER_OK_FUND_FROM_OPERATOR=1 ./02-setup-wallet.sh
 ```
 
 You should see "SETUP PASS": h1 h3 h4 h6 read as owned, h2 h5 as empty.
@@ -70,7 +86,8 @@ You should see "SETUP PASS": h1 h3 h4 h6 read as owned, h2 h5 as empty.
 ## 5. Deploy the gate immutable — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/lp0001/gate/repo/tests/onchain/03-deploy-gate.sh'
+# on H
+$G/tests/onchain/03-deploy-gate.sh
 ```
 
 You should see "DEPLOY-GATE PASS", "immutable true", and no "differs from spel program-id" note.
@@ -79,7 +96,8 @@ If that note appears, compare byte order before trusting pre-check 4.
 ## 6. Build the consumer and T4 — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/04-build-consumer-and-t4.sh > $BUILD_ROOT/lp0001/gate/run/build-consumer.log 2>&1; tail -3 $BUILD_ROOT/lp0001/gate/run/build-consumer.log'
+# on H
+$G/tests/onchain/04-build-consumer-and-t4.sh > $G/run/build-consumer.log 2>&1; tail -3 $G/run/build-consumer.log
 ```
 
 You should see a size, sha256 and program id line for each of the two binaries, and the build log
@@ -88,7 +106,8 @@ must contain no "STOP: r0vm on PATH".
 ## 7. Deploy the consumer and hostile program — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/lp0001/gate/repo/tests/onchain/05-deploy-consumer-and-t4.sh'
+# on H
+$G/tests/onchain/05-deploy-consumer-and-t4.sh
 ```
 
 You should see the completed `gate-config.json` printed: its `consumer` and `t4_hostile` fields hold
@@ -97,7 +116,8 @@ the two deployed program ids.
 ## 8. T3 first — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/lp0001/gate/repo/tests/onchain/T03-unauthorized-root.sh'
+# on H
+$G/tests/onchain/T03-unauthorized-root.sh
 ```
 
 STOP if it fails. PASS is a refusal with "gate: root not authorized" and a control where the same
@@ -106,7 +126,8 @@ shape on the unsafe gate applies. PASS-BY-LEZ is LEZ refusing first (recorded te
 ## 9. T6 second — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/lp0001/gate/repo/tests/onchain/T06-window.sh'
+# on H
+$G/tests/onchain/T06-window.sh
 ```
 
 STOP if it fails. Over and not-yet-open windows are refused, as are off-grid windows and
@@ -116,7 +137,8 @@ refused.
 ## 10. The rest, T4 last — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/lp0001/gate/repo/tests/onchain/run-all.sh'
+# on H
+$G/tests/onchain/run-all.sh
 ```
 
 This repeats T3 and T6 first (fine to run it alone instead of steps 8 and 9). T8 waits up to about
@@ -133,12 +155,13 @@ rule in `crates/gate_wallet_rules`, not the design. The same applies to T1's fai
 
 ## 11. wasm build and JS/wasm agreement — [laptop]
 
-Adding the wasm32 target is an install on the drive — owner's OK.
+Adding the wasm32 target is an install — owner's OK.
 
 ```sh
-RUSTUP_HOME=$BUILD_ROOT/rustup rustup target add wasm32-unknown-unknown --toolchain 1.98.1-aarch64-apple-darwin
-cd $SRC_ROOT/lez-nft-gate && the build wrapper cargo +1.98.1 build -p gate_wasm --release --target wasm32-unknown-unknown
-cp $BUILD_ROOT/target/lez-nft-gate/wasm32-unknown-unknown/release/gate_wasm.wasm js/gate-verify/gate_wasm.wasm
+# on L
+rustup target add wasm32-unknown-unknown --toolchain 1.98.1-aarch64-apple-darwin
+cd $R && cargo +1.98.1 build -p gate_wasm --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/gate_wasm.wasm js/gate-verify/gate_wasm.wasm
 (export NVM_DIR=$HOME/.nvm; . $NVM_DIR/nvm.sh; cd js/gate-verify && node --test test/*.test.mjs)   # the wasm test stops skipping
 ```
 
@@ -148,7 +171,8 @@ running rather than skipped.
 ## 12. Build the proving client — [chain]
 
 ```sh
-ssh build-host '$BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/90-build-cli-prove.sh > $BUILD_ROOT/lp0001/gate/run/build-cli-prove.log 2>&1'
+# on H
+$G/tests/onchain/90-build-cli-prove.sh > $G/run/build-cli-prove.log 2>&1
 ```
 
 Tens of minutes. You should see a sha256 of `$G/out/gate-cli-prove`.
@@ -160,7 +184,8 @@ Tens of minutes. You should see a sha256 of `$G/out/gate-cli-prove`.
 `RISC0_PROVER=local` with Metal kernels compiled in counts as "in-process CPU prover" (F §11).
 
 ```sh
-ssh build-host 'nohup $BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/91-real-proof.sh > $BUILD_ROOT/lp0001/gate/run/real-proof-console.log 2>&1 < /dev/null &'
+# on H
+nohup $G/tests/onchain/91-real-proof.sh > $G/run/real-proof-console.log 2>&1 < /dev/null &
 ```
 
 Record the wall time, peak memory (`time.log`, highest `footprint_kb`), transaction size
@@ -171,5 +196,5 @@ bridge claims.
 
 ## After
 
-Leave the chain to job-a's owner — do not stop it. Delete `$G/wallet-t13` if T13 left it. Nothing
-is pushed anywhere.
+Leave the chain to its owner — do not stop it. Delete `$G/wallet-t13` if T13 left it. Nothing is
+pushed anywhere.
