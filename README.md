@@ -31,7 +31,7 @@ not built, nothing is deployed, no real proof exists. The ordered commands are i
 | `js/gate-verify` | app-code verifier, JS (trust statement in its README) |
 | `js/wallet-shim` | the `membership-proof` capability, dApp side |
 | `miniapp/` | Members' door: static page and Basecamp skeleton |
-| `tests/onchain/` | setup, deploy and T0–T13 scripts for the build host |
+| `tests/onchain/` | setup, deploy and T0–T15 scripts for the build host |
 | `tests-only/` | T4's attacker stand-in; never deployed beyond the throwaway chain |
 | `tools/` | `gen_vectors.py` (golden vectors, std-lib Python), `b58.py`, `search_tx.py`, `linkability.py` |
 | `vectors/gate-vectors.json` | the one shared vector file (Rust, JS, QML-safe JS, consumer) |
