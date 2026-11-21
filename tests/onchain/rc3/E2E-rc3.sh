@@ -3,8 +3,8 @@
 # BUILD HOST, our public rc3 chain only (run through rc3/with-rc3.sh, after 02-setup-rc3.sh and
 # the deploys). End to end on a chain that verifies real receipts, with ONE real proof:
 #  1. h1 proves membership for actA's next Act at the reference consumer: 91-real-proof.sh
-#     (in-process prover, 4 threads, footprint sampler) under mini-lock.sh. Its time.log and
-#     sampler.log are what BENCH-proof-and-gas.sh reads (rows 31).
+#     (in-process prover, 4 threads, footprint sampler). The caller runs one proof at a time; there
+#     is no lock wrapper. Its time.log and sampler.log are what BENCH-proof-and-gas.sh reads (row 31).
 #  2. T08's first half, same assertions: actB's Act refused BINDING_MISMATCH; actA's Act applies
 #     once (nonce N -> N+1); its Gated outcome; the Act's gas (row 32: declared limit and what the
 #     payer was actually charged); verify --tx-hash re-checks the use (getEvents or, on a
@@ -28,7 +28,7 @@ if [ -n "${E2E_REUSE_PROOF:-}" ]; then
 else
   ollama_clear || { VERDICT=FAIL; note "an Ollama model stayed loaded: not proving"; finish_test; exit 1; }
   note "$(date -u +%H:%M:%S) real proof start; free $(memory_pressure -Q | awk -F': ' '/percentage/{print $2}')"
-  run real-proof env PROVE_HOLDER=h1 PROVE_ONCHAIN_ACTOR=actA "$LP0001_MINILOCK" "$R/tests/onchain/91-real-proof.sh"
+  run real-proof env PROVE_HOLDER=h1 PROVE_ONCHAIN_ACTOR=actA "$R/tests/onchain/91-real-proof.sh"
   P=$(ls -1dt "$G"/run/real-proof-* 2>/dev/null | head -1)
 fi
 cp "$P/client.log" "$O/prove.out"; grep -q "^proof {" "$O/prove.out"; echo $? > "$O/prove.rc"

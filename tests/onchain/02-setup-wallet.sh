@@ -7,15 +7,18 @@
 # (private fee payer, T5).
 #
 # OWNER OK NEEDED for steps 2 and 3: the only way to fund this wallet is from the throwaway
-# chain's operator wallet in job-a (a folder this work was given read-only): one public transfer
-# to `pay` and one sealed send to `gas`, whose fee one of the operator wallet's private accounts pays.
+# chain's operator wallet (a folder provided read-only): one public transfer to `pay` and one
+# sealed send to `gas`, whose fee one of the operator wallet's private accounts pays.
+# Extra settings: LP0001_OPERATOR_WALLET (its wallet dir) and LP0001_NFT_DRIVE (its CLI binary).
 set -uo pipefail
 . "$(dirname "$0")/env.sh"
 . "$(dirname "$0")/lib.sh" SETUP
+: "${LP0001_OPERATOR_WALLET:?set LP0001_OPERATOR_WALLET to the operator wallet directory}"
+: "${LP0001_NFT_DRIVE:?set LP0001_NFT_DRIVE to the nft-drive CLI binary}"
 W="$CLI wallet"
 # 1. wallet, pinned to the local chain
 [ -e "$G/wallet/storage.json" ] || run new $W account new public --label pay
-run net $W change-network http://127.0.0.1:3310
+run net $W change-network "$RPC"
 for l in defn mstr actA actB atk; do [ -n "$(acct $l)" ] || run "new-$l" $W account new public --label $l; done
 for l in h1 h2 h3 h4 h5 h6 gas; do [ -n "$(acct $l)" ] || run "new-$l" $W account new private --label $l; done
 PAY=$(acct pay)
@@ -30,7 +33,7 @@ stop() { VERDICT=FAIL; note "$1 failed (exit $(cat "$O/$1.rc")): $(grep -v '^\$ 
 PAY_PK=$($W account get --keys --account-id "Public/$PAY" 2>/dev/null | awk '/^pk /{print $2}')
 [ ${#PAY_PK} = 64 ] || { VERDICT=FAIL; note "no public key for pay (got '$PAY_PK')"; finish_test; exit 1; }
 if [ "${OWNER_OK_FUND_FROM_OPERATOR:-0}" = 1 ]; then
-  run fund env LEE_WALLET_HOME_DIR=$J/chain-home/wallets/operator $J/out/nft-drive-v2 wallet \
+  run fund env LEE_WALLET_HOME_DIR=$LP0001_OPERATOR_WALLET $LP0001_NFT_DRIVE wallet \
       auth-transfer send --from operator --to-pk "$PAY_PK" --amount 2000000000 || stop fund "pay is unfunded"
 else
   note "skipped funding: set OWNER_OK_FUND_FROM_OPERATOR=1 after the owner agrees"; finish_test; exit 1
@@ -61,7 +64,7 @@ receive_private() { # label
 }
 keys=$(keys_of gas); npk=$(echo "$keys" | sed -n 1p); vpk=$(echo "$keys" | sed -n 2p)
 [ ${#npk} = 64 ] || { VERDICT=FAIL; note "no npk for gas (got '$npk')"; finish_test; exit 1; }
-run seal-gas env LEE_WALLET_HOME_DIR=$J/chain-home/wallets/operator $J/out/nft-drive-v2 wallet \
+run seal-gas env LEE_WALLET_HOME_DIR=$LP0001_OPERATOR_WALLET $LP0001_NFT_DRIVE wallet \
     --fee-payer "$OPERATOR_FEE_PAYER" auth-transfer send --from operator --to-npk "$npk" --to-vpk "$vpk" \
     --amount 200000000 || stop seal-gas "gas is unfunded"
 receive_private gas

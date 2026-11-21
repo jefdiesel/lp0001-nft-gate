@@ -1,13 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# BUILD HOST, through the lock (after 03):
-#   ssh build-host '$BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/04-build-consumer-and-t4.sh > $BUILD_ROOT/lp0001/gate/run/build-consumer.log 2>&1'
-# The consumer's constants need the deployed gate, the collection and the channel id.
+# BUILD HOST (after 03). The consumer's constants need the deployed gate, the collection and the
+# channel id. No build wrapper: the caller runs one guest build at a time. Paths come from env.sh.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 export CARGO_BUILD_JOBS=4 TMPDIR=$G/tmp
 command -v r0vm >/dev/null 2>&1 && { echo "STOP: r0vm on PATH"; exit 1; }
-PACK=$J/guest-target/debug/risc0-packager
 cfg() { python3 -I -c "import json;print(json.load(open('$GATE_CONFIG'))['$1'])"; }
 hexid() { python3 -I "$R/tools/b58.py" hex "$1"; }
 build() {

@@ -1,24 +1,34 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# Sourced by every on-chain test script. Build host (ssh build-host) only.
-# Rules: LP0001-GLM-BRIEF-2026-11-18.md §6. Own folder only; job-a is read-only (its r0vm for
-# simulation, its patched spel, its chain on 3310). Never r0vm on PATH. No real proof here.
-# G is this run's own folder (repo copy, out/, wallet/, run/, guest-target/). LP0001_GATE_HOME
-# points a second run at a folder of its own; the default is the first run's folder.
-G=${LP0001_GATE_HOME:-$BUILD_ROOT/lp0001/gate}
-J=$BUILD_ROOT/lp0001/job-a
-R=$G/repo
+# Sourced by every on-chain test script that runs on the BUILD HOST. All machine-specific paths
+# come from the settings below; none has a private default. Run each script on the machine its
+# header names. See tests/onchain/README.md for the full list and examples.
+#
+# Rules (brief §6): own folder only; the job-a tree is read-only (its r0vm for simulation, its
+# patched spel, its chain on 3310). Never r0vm on PATH. No real proof in the default (dev) mode.
+
+# ---- required settings: an unset one stops here with a plain message ----
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run's own folder (out/, wallet/, run/, guest-target/)}"
+: "${LP0001_REPO:?set LP0001_REPO to the repository root on this machine}"
+: "${LP0001_SPEL:?set LP0001_SPEL to the spel CLI binary (deploy and program-id)}"
+: "${LP0001_PACKAGER:?set LP0001_PACKAGER to the risc0-packager binary (guest builds)}"
+: "${LP0001_SEQ_RPC:?set LP0001_SEQ_RPC to this chain's JSON-RPC URL}"
+
+G=$LP0001_GATE_HOME
+R=$LP0001_REPO
+SPEL=$LP0001_SPEL
+PACK=$LP0001_PACKAGER
+RPC=$LP0001_SEQ_RPC
+export GATE_CLI_SEQUENCER=$RPC
 export LEE_WALLET_HOME_DIR=$G/wallet
 export GATE_CONFIG=$G/gate-config.json
-# LP0001_RPC, LP0001_NFT and LP0001_CLI point a run at another chain (tests/onchain/rc3/env-rc3.sh:
-# our public rc3 chain); the defaults are the throwaway chain's.
-export GATE_CLI_SEQUENCER=${LP0001_RPC:-http://127.0.0.1:3310}
-export PATH=$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Optional settings with generic (non-private) defaults.
+export PATH="${LP0001_EXTRA_PATH:-}:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 CLI=${LP0001_CLI:-$G/out/gate-cli}
-SPEL=$J/out/spel
-RPC=$GATE_CLI_SEQUENCER
 # The reference NFT program on the throwaway chain (native build, F §0, §6).
 NFT=${LP0001_NFT:-ErycMYqXUUtducaYmpHZjRgdbLXchrMiV4NZRnmRDNmu}
 export GATE_NFT_PROGRAM=$NFT
+
 if command -v r0vm >/dev/null 2>&1; then echo "STOP: r0vm is on PATH (brief §6)"; exit 1; fi
 if [ "${LP0001_REAL_PROVING:-0}" = 1 ]; then
   # A chain that verifies real receipts (the public rc3 chain): no development receipts, no r0vm
@@ -29,8 +39,9 @@ if [ "${LP0001_REAL_PROVING:-0}" = 1 ]; then
   case $CLI in *gate-cli-prove) ;; *) echo "STOP: real proving needs gate-cli-prove, not $CLI"; exit 1 ;; esac
   [ -x "$CLI" ] || { echo "STOP: $CLI missing (90-build-cli-prove.sh)"; exit 1; }
 else
+  : "${LP0001_R0VM:?set LP0001_R0VM to the r0vm binary used for local simulation}"
   export RISC0_DEV_MODE=1
-  export RISC0_SERVER_PATH=$J/tools/r0vm
+  export RISC0_SERVER_PATH=$LP0001_R0VM
   [ -x "$RISC0_SERVER_PATH" ] || { echo "STOP: $RISC0_SERVER_PATH missing: no simulation possible"; exit 1; }
 fi
 mkdir -p "$G/run"

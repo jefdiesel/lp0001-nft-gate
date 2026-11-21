@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Sourced after env.sh and lib.sh by the rc3 scripts. A private transaction on the rc3 chain is
-# a real proof: run it through mini-lock.sh (one heavy job on the Mini at a time, >= 30% free)
-# and guard.sh (pause < 15% free, kill < 8% or above 11 GB footprint), never alongside Ollama.
+# a real proof: the caller must run one heavy proof at a time (there is no lock wrapper now), and
+# guard.sh pauses below 15% free and kills below 8% or above 11 GB footprint, never alongside Ollama.
 # ollama_clear: wait (up to 12 min) for no model loaded; never pauses or stops Ollama itself.
 ollama_clear() {
   local i
@@ -12,7 +12,8 @@ ollama_clear() {
   done
   return 1
 }
-# prove_run NAME cmd...: like run, through the lock and the guard; guard log in $O/NAME.guard.log
+# prove_run NAME cmd...: like run, through the guard only; guard log in $O/NAME.guard.log.
+# The caller is responsible for not running another heavy proof at the same time.
 prove_run() {
   local name=$1; shift
   if ! ollama_clear; then
@@ -20,7 +21,7 @@ prove_run() {
     note "$name not started: an Ollama model stayed loaded for 12 min (not paused by this script)"; return 1
   fi
   echo "# $(date -u +%H:%M:%S) proving $name; free $(memory_pressure -Q | awk -F': ' '/percentage/{print $2}')" | tee -a "$LOG"
-  run "$name" "$LP0001_MINILOCK" env GUARD_LOG="$O/$name.guard.log" MAX_FOOTPRINT_GB=11 "$LP0001_GUARD" "$@"
+  run "$name" env GUARD_LOG="$O/$name.guard.log" MAX_FOOTPRINT_GB=11 "$LP0001_GUARD" "$@"
   local rc=$?
   grep -h "guard: exit" "$O/$name.out" | tail -1 | sed "s/^/# $name /" | tee -a "$LOG"
   return $rc

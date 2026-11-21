@@ -1,13 +1,14 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# THE ONE REAL PROOF of `Prove` (spec §8.2). NOT RUN. Start it ONLY through the build lock, and
-# only when RUN-AFTER-3AM.txt's preconditions hold (owner's call):
-#   ssh build-host 'nohup $BUILD_ROOT/dev/fix-names/mini-lock.sh $BUILD_ROOT/lp0001/gate/repo/tests/onchain/91-real-proof.sh > $BUILD_ROOT/lp0001/gate/run/real-proof-console.log 2>&1 < /dev/null &'
+# THE ONE REAL PROOF of `Prove` (spec §8.2). NOT RUN by this script alone: the owner starts it
+# only when RUN-AFTER-3AM.txt's preconditions hold and no other proof is running (there is no lock
+# wrapper now; the caller enforces one heavy proof at a time). RUNS ON THE BUILD HOST.
 # In-process CPU prover, 4 threads, never r0vm; kill above 11 GB footprint or under 15% free
 # (the same sampler as job-a/run-real-proof.sh). Records time, peak memory, tx size.
 set -u
-G=${LP0001_GATE_HOME:-$BUILD_ROOT/lp0001/gate}
-. $G/repo/tests/onchain/env.sh
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run's folder on the build host}"
+G=$LP0001_GATE_HOME
+. "$G/repo/tests/onchain/env.sh"
 # dev mode OFF and no r0vm server for THIS command only:
 unset RISC0_DEV_MODE RISC0_SERVER_PATH
 export RISC0_PROVER=local RAYON_NUM_THREADS=4
@@ -44,5 +45,5 @@ wait $TPID; echo "exit $?" >> "$LOG/sampler.log"
 tail -8 "$LOG/client.log"; grep -E "real|maximum resident|peak memory" "$LOG/time.log"
 grep footprint_kb "$LOG/sampler.log" | sort -t= -k2 -n | tail -1
 H=$(grep -oE "^submitted [0-9a-f]{64}" "$LOG/client.log" | tail -1 | cut -d' ' -f2)
-[ -n "$H" ] && RISC0_DEV_MODE=1 RISC0_SERVER_PATH=$J/tools/r0vm $CLI decode-tx --hash $H | head -3
+[ -n "$H" ] && RISC0_DEV_MODE=1 RISC0_SERVER_PATH=$LP0001_R0VM $CLI decode-tx --hash $H | head -3
 echo "machine: $(sysctl -n machdep.cpu.brand_string) $(( $(sysctl -n hw.memsize) / 1073741824 )) GiB $(sw_vers -productVersion)"
