@@ -2,6 +2,7 @@
 // must not leak an account, NFT or raw state code. No Qt runner is needed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { progressLine as qmlProgress, proofLine, doorStep, doorSteps, isProblem, short } from '../basecamp/src/qml/logic.mjs';
 import { progressLine as webProgress, PendingGuard } from '../web/logic.mjs';
@@ -76,4 +77,11 @@ test('only a real problem is red; short ids keep the full value out of a heading
   assert.equal(short(''), '');
   assert.equal(short('short'), 'short');
   assert.equal(short('abcdefghijklmnop'), 'abcdefgh…');
+});
+
+// LP-0001 privacy: the app proves membership without ever asking for account access.
+test("Members' door never asks the wallet for account access", () => {
+  const qml = readFileSync(new URL("../basecamp/src/qml/Main.qml", import.meta.url), "utf8");
+  for (const forbidden of ["wallet.connect", "request_access", "granted_accounts", "account_balances", "wallet.balances"])
+    assert.ok(!qml.includes(forbidden), forbidden + " must not appear in the Members' door screen");
 });
