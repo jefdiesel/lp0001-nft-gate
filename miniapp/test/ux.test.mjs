@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { progressLine as qmlProgress, proofLine } from '../basecamp/src/qml/logic.mjs';
+import { progressLine as qmlProgress, proofLine, doorStep, doorSteps, isProblem, short } from '../basecamp/src/qml/logic.mjs';
 import { progressLine as webProgress, PendingGuard } from '../web/logic.mjs';
 
 test('QML progress uses plain words, never a raw state code', () => {
@@ -42,4 +42,38 @@ test('one pending request per acting account', () => {
   assert.equal(guard.take('bob'), true);
   guard.release('alice');
   assert.equal(guard.take('alice'), true);
+});
+
+test('the door guide marks one step, with its help, from the view state', () => {
+  const idle = { proofReady: false, waiting: false, busy: false };
+  assert.equal(doorStep(idle), 1);
+  assert.equal(doorStep(Object.assign({}, idle, { busy: true })), 2);
+  assert.equal(doorStep(Object.assign({}, idle, { waiting: true })), 2);
+  assert.equal(doorStep(Object.assign({}, idle, { proofReady: true })), 3);
+  // A refused or withdrawn request stops the poll, so step 1 is current again.
+  assert.equal(doorStep({ proofReady: false, waiting: false, busy: false }), 1);
+
+  const rows = doorSteps(2);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map((r) => r.n), [1, 2, 3]);
+  assert.deepEqual(rows.map((r) => r.state), ['done', 'now', 'later']);
+  assert.deepEqual(rows.map((r) => r.text), ['Ask for a proof', 'Approve in the wallet', 'Read your pass']);
+  for (const row of rows) {
+    assert.ok(row.detail.length > 20, `step ${row.n} needs help text`);
+    assert.ok(!row.detail.includes('Public/') && !row.detail.includes('Private/'));
+  }
+  assert.equal(doorSteps(1)[0].state, 'now');
+  assert.equal(doorSteps(3)[2].state, 'now');
+});
+
+test('only a real problem is red; short ids keep the full value out of a heading', () => {
+  assert.equal(isProblem('Preparing…'), false);
+  assert.equal(isProblem('Waiting for you to approve in the wallet…'), false);
+  assert.equal(isProblem('Proof ready. Pass id abababab…'), false);
+  assert.equal(isProblem('Not done: the wallet refused the request.'), true);
+  assert.equal(isProblem('The wallet is busy. Try again in a moment.'), true);
+  assert.equal(isProblem(''), false);
+  assert.equal(short(''), '');
+  assert.equal(short('short'), 'short');
+  assert.equal(short('abcdefghijklmnop'), 'abcdefgh…');
 });

@@ -146,3 +146,41 @@ export function proofLine(proof) {
   if (!proof || typeof proof.slot !== 'string' || proof.slot.length !== 64) return 'Proof ready.'
   return 'Proof ready. Pass id ' + proof.slot.slice(0, 8) + '…; no NFT or account is revealed.'
 }
+
+/**
+ * Which numbered step of the door guide is current: 1 ask, 2 approve, 3 read the pass.
+ * A busy call or a waiting request holds the person on step 2; a finished proof moves to 3.
+ * A refused, declined or withdrawn request stops the poll, so they are back at step 1.
+ */
+export function doorStep(v) {
+  if (v.proofReady) return 3
+  if (v.waiting || v.busy) return 2
+  return 1
+}
+
+/** The "How it works" steps: verb + object labels, plain help, one marked as current. */
+export function doorSteps(step) {
+  var rows = [
+    { n: 1, text: "Ask for a proof",
+      detail: "Names Wallet asks you to prove you hold an NFT of the collection. This app never sees your account or which NFT you use." },
+    { n: 2, text: "Approve in the wallet",
+      detail: "The wallet shows what becomes public: a pass id and when it starts and ends. Proving takes about 10 minutes; you come back here after." },
+    { n: 3, text: "Read your pass",
+      detail: "Your pass id is below. Show it to an app that asks for it; it says nothing about which NFT or account you used." }
+  ]
+  return rows.map(function(row) {
+    return { n: row.n, text: row.text, detail: row.detail,
+      state: row.n < step ? "done" : row.n === step ? "now" : "later" }
+  })
+}
+
+/** A plain stage or a ready pass stays in the page's ink; only a real problem is red. */
+export function isProblem(line) {
+  return /^(Not done:|Could not |You declined|The request expired|You cancelled|The wallet is busy\.)/.test(String(line || ""))
+}
+
+/** A short id for a heading; the full value stays in the technical details. */
+export function short(id) {
+  var s = String(id || "")
+  return s.length <= 12 ? s : s.slice(0, 8) + "…"
+}
