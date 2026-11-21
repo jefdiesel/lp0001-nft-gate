@@ -1,7 +1,7 @@
 # Wallet integration: the `membership-proof` capability
 
-For the wallet worker (Names Wallet, branch `names-nft` in `$SRC_ROOT/logos-names-nft`,
-which is theirs: this repo does not edit it). This is the interface they should implement in
+For the wallet worker (Names Wallet, branch `names-nft` in their own repository: this repo does
+not edit it). This is the interface they should implement in
 the `names` module, in the style of their Provider SDK (`docs/wallet/PROVIDER-SDK.md` there:
 snake_case methods, the `{success, value, error, busy?}` envelope, requests polled by id).
 Spec: `LP0001-OWNERSHIP-PROOF-SPEC.md` §4. Names are proposals (the spec says so).

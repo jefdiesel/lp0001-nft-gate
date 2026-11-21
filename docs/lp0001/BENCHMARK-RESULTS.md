@@ -5,19 +5,19 @@ No numbers are committed until the owner runs the harness on the build host.
 
 | Row | Metric | Value | Source |
 | --- | --- | --- | --- |
-| 31 | Proof generation wall time | 762.51 s | $BUILD_ROOT/lp0001/rc3-run/run/real-proof-20261120T2139Z/time.log |
-| 31 | Peak proof footprint | 9638912 KiB | $BUILD_ROOT/lp0001/rc3-run/run/real-proof-20261120T2139Z/sampler.log |
-| 32 | On-chain Act gas | 298712 fee units | $BUILD_ROOT/lp0001/rc3-run/run/E2E/log.txt |
-| 32 | T08 verdict | PASS | $BUILD_ROOT/lp0001/rc3-run/run/E2E/log.txt |
+| 31 | Proof generation wall time | 762.51 s | `real-proof-20261120T2139Z/time.log` |
+| 31 | Peak proof footprint | 9638912 KiB | `real-proof-20261120T2139Z/sampler.log` |
+| 32 | On-chain Act gas | 298712 fee units | `E2E/log.txt` |
+| 32 | T08 verdict | PASS | `E2E/log.txt` |
 
-Machine: Apple M4, 16 GiB, macOS 15.8.2.
+Machine: Apple M4, 16 GB, macOS 15.
 
 ## Context (added by hand, rc3 run of 2026-11-20)
 
 - Chain: our public LEZ v0.4.0-rc3 chain (lez.nameswallet.app, loopback 127.0.0.1:3290), which
   verifies real receipts. Not the official testnet.
 - Prover: gate-cli built with `prove`, `RISC0_PROVER=local`, `RAYON_NUM_THREADS=4`, risc0 locked
-  to the sequencer's versions (recursion 4.0.4, zkp 3.0.4), under mini-lock.sh. The wall time
+  to the sequencer's versions (recursion 4.0.4, zkp 3.0.4), one job at a time. The wall time
   above is the membership Prove (holder h1, on-chain context for actA); `/usr/bin/time -l` also
   reports a peak memory footprint of 9,952,091,960 bytes and a max RSS of 6.8 GB.
 - Prove tx `e40570f3…1f5f` (block 39883, 254,729 bytes stored). Act tx `37cb802f…dd3c`

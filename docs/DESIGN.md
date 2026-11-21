@@ -1,7 +1,6 @@
 # Design: the LP-0001 private ownership proof ("slot gate")
 
-The build spec is `$SRC_ROOT/LP0001-OWNERSHIP-PROOF-SPEC.md` (2026-11-18). This is it
-condensed, plus what building it showed. Labels as in the spec: OBSERVED (ran on a chain),
+The LP-0001 build spec (2026-11-18) is condensed here, plus what building it showed. Labels as in the spec: OBSERVED (ran on a chain),
 READ (source), UNVERIFIED (nobody has run it; the test that settles it is named).
 
 ## The shape
