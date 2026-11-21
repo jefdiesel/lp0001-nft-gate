@@ -6,8 +6,9 @@ library), bound to one use and expiring. It reads Logos's reference NFT program
 (`lez-programs` `refactor/lez-v0.4.x` `dea23c2`) through that program's own `ReadState`; it
 writes no NFT state and is not an NFT program.
 
-Build spec: `$SRC_ROOT/LP0001-OWNERSHIP-PROOF-SPEC.md`. Condensed, with limits L1–L10,
-threats and what building showed: [docs/DESIGN.md](docs/DESIGN.md). Owner questions:
+The spec's limits L1–L10, threats and what building showed are condensed in
+[docs/DESIGN.md](docs/DESIGN.md) (§"Limits, in plain words", §"Threats and what stops each",
+§"What building it showed"). Owner questions:
 [docs/OWNER-DECISIONS.md](docs/OWNER-DECISIONS.md). Upstream asks (drafts, not posted):
 [docs/UPSTREAM-ASKS.md](docs/UPSTREAM-ASKS.md). Wallet interface:
 [docs/WALLET-INTEGRATION.md](docs/WALLET-INTEGRATION.md).
@@ -88,6 +89,6 @@ Tests run only against a local fake HTTP server on an ephemeral loopback port th
 real node (no chain, no real network, no proving):
 
 ```sh
-the build wrapper cargo +1.98.1 test -p storage_client
+cargo +1.98.1 test -p storage_client
 ```
 
