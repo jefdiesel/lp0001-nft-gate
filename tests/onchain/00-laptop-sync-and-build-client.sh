@@ -4,8 +4,8 @@
 # copies the repo and the binary into the build host's own run folder. No ssh, no build wrapper:
 # LP0001_GATE_HOME must be the build host's run folder mounted on this machine.
 set -euo pipefail
-: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to the build host's run folder (mounted here)}"
-: "${LP0001_REPO:?set LP0001_REPO to this repository's root on the laptop}"
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to the build hosts run folder (mounted here)}"
+: "${LP0001_REPO:?set LP0001_REPO to this repository root on the laptop}"
 : "${LP0001_CARGO_TARGET_DIR:?set LP0001_CARGO_TARGET_DIR to the cargo target dir on the laptop}"
 REPO=$LP0001_REPO
 G=$LP0001_GATE_HOME

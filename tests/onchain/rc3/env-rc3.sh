@@ -12,12 +12,12 @@
 #  - the full T01-T15 suite is NOT run here (40+ proofs): rc3/02-setup-rc3.sh (3 proofs) and
 #    rc3/E2E-rc3.sh (1 proof, T08's on-chain use) are.
 
-: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this rc3 run's own folder}"
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this rc3 run own folder}"
 : "${LP0001_REPO:?set LP0001_REPO to the repository root on this machine}"
 : "${LP0001_SPEL:?set LP0001_SPEL to the spel CLI binary}"
 : "${LP0001_PACKAGER:?set LP0001_PACKAGER to the risc0-packager binary}"
 : "${LP0001_GUARD:?set LP0001_GUARD to the memory guard script}"
-: "${LP0001_FAUCET_ENV:?set LP0001_FAUCET_ENV to the faucet wallet's env file}"
+: "${LP0001_FAUCET_ENV:?set LP0001_FAUCET_ENV to the faucet wallets env file}"
 : "${LP0001_SEQ_RPC:?set LP0001_SEQ_RPC to the rc3 JSON-RPC URL}"
 
 export LP0001_GATE_HOME LP0001_REPO LP0001_SPEL LP0001_PACKAGER

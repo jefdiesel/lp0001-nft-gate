@@ -6,7 +6,7 @@
 # In-process CPU prover, 4 threads, never r0vm; kill above 11 GB footprint or under 15% free
 # (the same sampler as job-a/run-real-proof.sh). Records time, peak memory, tx size.
 set -u
-: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run's folder on the build host}"
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run folder on the build host}"
 G=$LP0001_GATE_HOME
 . "$G/repo/tests/onchain/env.sh"
 # dev mode OFF and no r0vm server for THIS command only:

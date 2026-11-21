@@ -7,11 +7,11 @@
 # patched spel, its chain on 3310). Never r0vm on PATH. No real proof in the default (dev) mode.
 
 # ---- required settings: an unset one stops here with a plain message ----
-: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run's own folder (out/, wallet/, run/, guest-target/)}"
+: "${LP0001_GATE_HOME:?set LP0001_GATE_HOME to this run own folder (out/, wallet/, run/, guest-target/)}"
 : "${LP0001_REPO:?set LP0001_REPO to the repository root on this machine}"
 : "${LP0001_SPEL:?set LP0001_SPEL to the spel CLI binary (deploy and program-id)}"
 : "${LP0001_PACKAGER:?set LP0001_PACKAGER to the risc0-packager binary (guest builds)}"
-: "${LP0001_SEQ_RPC:?set LP0001_SEQ_RPC to this chain's JSON-RPC URL}"
+: "${LP0001_SEQ_RPC:?set LP0001_SEQ_RPC to this chains JSON-RPC URL}"
 
 G=$LP0001_GATE_HOME
 R=$LP0001_REPO
