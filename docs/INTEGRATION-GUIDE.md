@@ -6,9 +6,12 @@ account. Every call below is read-only in the guide; nothing here deploys or sen
 transaction. Sources are named at the end of each section.
 
 All wallet calls use the Provider SDK envelope `{success, value, error, busy?}` and the QML bridge
-`logos.callModuleAsync("names", method, args, cb)`. **Retry on `busy`** and poll a request by id;
+`logos.callModuleAsync("names", method, args, cb)`. The bridge hands back **JSON text**, so an
+app-side call must `JSON.parse` it before reading `.value`; `createMembershipClient` below does that
+internally, so do not parse again for its calls. **Retry on `busy`** and poll a request by id;
 a boolean `success` is not a result. (Source: `logos-names-wallet-1121/docs/wallet/PROVIDER-SDK.md`,
-§"The reply envelope"; reading the Names Wallet repo is read-only here.)
+§"The reply envelope" and its QML example at line 722; reading the Names Wallet repo is read-only
+here.)
 
 ## 0. Setup: one client and the pinned gate
 
@@ -45,15 +48,15 @@ Ask once, then read the grant. Public accounts print as `Public/<id>`; private o
 app-specific handles like `Private/~<40 hex>` — the app never sees another app's private account.
 
 ```js
-const ask = await transport.call('request_nft_access', 'Show your collectibles');
+const ask = JSON.parse(await transport.call('request_nft_access', 'Show your collectibles'));
 // if (ask.busy) retry; if (!ask.success) show ask.error
 const id = ask.value.request ?? ask.value;          // pending request
 let granted = null;
 while (!granted) {
-  const r = await transport.call('nft_request_status', id);
+  const r = JSON.parse(await transport.call('nft_request_status', id));
   if (r.busy) continue;
   if (!r.success) throw new Error(r.error);
-  if (r.value.state === 'done') granted = await transport.call('granted_nfts');
+  if (r.value.state === 'done') granted = JSON.parse(await transport.call('granted_nfts'));
   else if (['failed', 'rejected', 'expired', 'cancelled'].includes(r.value.state)) {
     throw new Error(`NFT access ${r.value.state}`);
   }
@@ -69,17 +72,18 @@ published program ids; the wallet's `granted_nfts` result shape is documented in
 key. To add Logos name deeds to the list:
 
 ```js
-import { resolveName, deedAccounts, readDeed } from 'logos-sdk-js/src/lns.js';
+import { resolveName, readDeed } from 'logos-sdk-js/src/lns.js';
 const record = await resolveName(client, LNS_PROGRAM, 'jef', Date.now());
 if (record?.deed) {
-  const deed = deedAccounts(LNS_PROGRAM, record.id, record.ownerTag, record.deed.nonce);
-  const held = await readDeed(client, deed);   // { held, kind: 'master'|'copy'|null }
+  // resolveName already derived the accounts: record.deed is { definition, holding, nonce }.
+  const held = await readDeed(client, record.deed); // { held, kind: 'master'|'copy'|null, definition }
 }
 ```
 
 Expected: `normalizeName('  @ALICE.lez ') === 'alice'` and
 `publicView({account:'PublicAccount', texts:{forward:'bob'}}).publicAccount === 'PublicAccount'`
-(`logos-sdk-js/test/fixtures/*`, asserted in `logos-sdk-js/test`). Source: PROVIDER-SDK.md
+(`logos-sdk-js/test/fixtures/*`, asserted in `logos-sdk-js/test`). `readDeed` also returns the
+decoded `definition`, so a definition mismatch is visible to the app. Source: PROVIDER-SDK.md
 §`granted_nfts`; `logos-sdk-js/src/{lns,tx}.js`.
 
 ## 2. Send one NFT
@@ -90,10 +94,10 @@ only `membership-proof` **cannot** send — it needs the `nft_transfers` grant.
 ```js
 await transport.call('request_nft_transfers', 'Send a Door Pass to alice');
 const destination = 'alice';                 // an LNS name, resolved by the wallet
-const proposal = await transport.call('propose_nft_transfer',
+const proposal = JSON.parse(await transport.call('propose_nft_transfer',
   nft.program, nft.account, destination,
-  `Send 1 ${nft.collection} to alice`);
-// poll nft_request_status(proposal.value.request) until done/failed
+  `Send 1 ${nft.collection} to alice`));
+// poll JSON.parse(await transport.call('nft_request_status', proposal.value.request)) until done/failed
 if (proposal.value.tx) show(`Sent. Transaction ${proposal.value.tx}`);
 ```
 
@@ -112,12 +116,13 @@ PROVIDER-SDK.md §`granted_nfts`.
 
 ```js
 // No app-side call is needed to receive. Verify the result the same way as §1:
-const r = await transport.call('nft_request_status', requestId);
+const r = JSON.parse(await transport.call('nft_request_status', requestId));
 show(r.value.state === 'done' ? `Received: ${r.value.tx}` : `Not received: ${r.value.state}`);
 ```
 
 Expected: `Received: <tx hash>` once the wallet accepts the pending credit; before that, the
-status stays pending. Do not poll for someone else's private account.
+status stays pending. Do not poll for someone else's private account. (The status reply is JSON
+text too, hence the `JSON.parse` above.)
 
 ## 4. Claim an LNS name's NFT (deed)
 
@@ -131,9 +136,11 @@ show(before?.deed ? 'This name already has a deed NFT.' : 'No deed yet: claim it
 ```
 
 Expected before a claim: `No deed yet: claim it in the wallet.` After the wallet claims,
-`resolveName(...).deed` is `{ definition, nonce }`, `deedAccounts` gives the holding, and
-`readDeed` returns `{ held: true, kind: 'master' }`. Source: `docs/wallet/DEEDS.md` in the Names
-Wallet repo; `names deed claim` in its CLI; `logos-sdk-js/src/lns.js`.
+`resolveName(...).deed` is `{ definition, holding, nonce }` (the accounts are derived inside
+`resolveName`; fields `id` and `ownerTag` are only on the decoded name record, not on its result),
+and `readDeed(client, record.deed)` returns `{ held: true, kind: 'master', definition }`. Source:
+`docs/wallet/DEEDS.md` in the Names Wallet repo; `names deed claim` in its CLI;
+`logos-sdk-js/src/lns.js`.
 
 Do **not** promise a `propose_call` snippet for `ClaimDeed`: no message/actor vector for it is
 documented, so the guide does not ship one.
@@ -163,11 +170,16 @@ const v = await verifyOffchain({
 show(v.name === 'OK' ? 'Valid' : PLAIN[v.name]);
 ```
 
-Expected fixture outputs (`vectors/gate-vectors.json`): case `ok-mid` at now `1763500201000`
-returns `OK`/`OK` for binding `f28a29f45e7959dbcea32b80af61c2f2de41f830bb2b068d334772bc53cd55e4`;
-fact `fact-ttl0` is not_before `1763500200000`, expires_at `1763503800000`. The mini-app's own
-test expects the screen line `Holder of Door Pass, until 2025-11-18T22:10:00Z.` and that it does
-not reveal `Which NFT, which account.` (`miniapp/test/logic.test.mjs`).
+Expected fixture outputs (`vectors/gate-vectors.json`): `verifyOffchain` builds the **off-chain**
+context, so for the `offchain-1` use values (caller identity, purpose and app nonce in that vector)
+the expected binding is `40d30a463123180a5450e676bb16d15bd2f8907866af9eb9b8bb3af426f59545` and a
+gate fact with that binding inside its window verifies `OK`. The `ok-mid` case's binding
+`f28a29f45e7959dbcea32b80af61c2f2de41f830bb2b068d334772bc53cd55e4` is the **on-chain** context
+(from `onchain-nonce-0`): a generic `check(state, binding, now)` with that binding returns `OK` at
+`1763500201000`, but `verifyOffchain` with the `offchain-1` use returns `BINDING_MISMATCH` against
+that same state. Fact `fact-ttl0` is not_before `1763500200000`, expires_at `1763503800000`. The
+mini-app's own test expects the screen line `Holder of Door Pass, until 2025-11-18T22:10:00Z.` and
+that it does not reveal `Which NFT, which account.` (`miniapp/test/logic.test.mjs`).
 
 The proof object is sanitised to `{gate, slot, not_before, expires_at, tx_hash}` (plus
 `act_tx_hash` for on-chain use). The shim maps `pending → awaiting-approval`, `running+prove →
