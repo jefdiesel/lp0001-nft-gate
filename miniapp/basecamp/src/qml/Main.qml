@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Members' door, Basecamp ui module SKELETON (spec §5). Not built, not published.
-// Calls only the `membership-proof` methods of the names module (docs/WALLET-INTEGRATION.md).
+// Calls only the `membership-proof` methods of the wallet (docs/WALLET-INTEGRATION.md). Finding
+// the wallet, connecting, opening Names and the busy retry are the Names Wallet SDK's job
+// (./NamesWallet.qml and ./NamesWalletSDK.mjs, copied unchanged): one timer per wait, no shared
+// retry timer that a later busy answer could overwrite.
 // Logic (check, derivations, plain text, the numbered steps) is in logic.mjs and is tested in
 // node (miniapp/test). Chain reads need a C++ backend; that backend is not written here.
 //
@@ -19,14 +22,21 @@ Item {
     id: root
     property Look look: Look {}
 
-    // ── Wallet (unchanged) ───────────────────────────────────────────────────────────
+    // ── Wallet: the SDK finds it, connects, opens Names and retries busy calls ────────
+    NamesWallet {
+        id: wallet
+        app: "members_door_ui"           // metadata.json `name`
+        bridge: typeof logos !== "undefined" ? logos : null
+        Component.onCompleted: getWallet(function(w) {
+            if (w) check({})
+        })
+    }
     property string requestId: ""
     property string stage: ""
     property string verdictText: ""
     property string nonce: ""
     property bool busy: false
-    property int retries: 0
-    readonly property bool bridgeReady: typeof logos !== "undefined" && !!logos.callModuleAsync
+    readonly property bool bridgeReady: typeof logos !== "undefined" && !!logos.callModuleAsync && !!wallet.current
     readonly property bool configured: config.collection.length > 0
 
     // ── View state ───────────────────────────────────────────────────────────────────
@@ -39,30 +49,28 @@ Item {
     readonly property string networkName: "Logos test network"
     readonly property string networkDetail: "Names Wallet"
 
-    function call(method, args, done) {
-        logos.callModuleAsync("names", method, args, function (reply) {
-            var r = JSON.parse(reply)
-            if (r.busy) {
-                if (root.retries >= 6) {
-                    root.busy = false
-                    root.stage = "The wallet is busy. Try again in a moment."
-                    return
-                }
-                root.retries++
-                root.stage = "The wallet is busy; retrying (" + root.retries + "/6)…"
-                retry.method = method; retry.args = args; retry.done = done; retry.start()
-                return
-            }
-            root.retries = 0
-            done(r)
-        })
-    }
-    Timer { id: retry; interval: 500; property string method; property var args; property var done
-            onTriggered: root.call(method, args, done) }
-
     function randomNonce() {   // QML has no crypto API: ask the wallet's module for randomness in the real app
         var s = ""; for (var i = 0; i < 64; i++) s += "0123456789abcdef"[Math.floor(Math.random() * 16)]
         return s
+    }
+
+    // The SDK's call() retries a busy answer with its own one-shot timer per call. The old shared
+    // "The wallet is busy; retrying (n/6)…" line is now inside the SDK, not on this screen; the
+    // plain final busy and refusal lines below are unchanged.
+    function proofFailed(r) {
+        busy = false
+        if (r.busy) { stage = "The wallet is busy. Try again in a moment."; return }
+        stage = "Not done: " + (r.error || "the wallet refused the request")
+    }
+
+    function sendProof(body) {
+        wallet.call("request_membership_proof", [JSON.stringify(body)], function (v) {
+            busy = false
+            requestId = v.request
+            stage = "Waiting for you to approve in the wallet…"
+            poll.start()
+            wallet.open()
+        }, proofFailed)
     }
 
     function request(onchain) {
@@ -72,28 +80,24 @@ Item {
         verdictText = ""
         nonce = randomNonce()
         var body = { collection: config.collection, purpose: "Check in this app", nonce: nonce, ttl: 3600000 }
-        call("request_membership_proof", [JSON.stringify(body)], function (r) {
-            busy = false
-            if (!r.success) { stage = "Not done: " + (r.error || "the wallet refused the request"); return }
-            requestId = r.value.request
-            stage = "Waiting for you to approve in the wallet…"
-            poll.start()
+        if (wallet.state === "connected") { sendProof(body); return }
+        wallet.connect("Check in this app", {}, {
+            waiting: function(r) { stage = "Waiting for you to approve in the wallet…" },
+            done: function(r) { sendProof(body) },
+            failed: proofFailed
         })
     }
 
     // Status only while this page is open and in front (Qt.application.state).
     Timer { id: poll; interval: 5000; repeat: true
         running: false
-        onTriggered: if (Qt.application.state === Qt.ApplicationActive) root.call("membership_proof_status", [requestId], function (r) {
-            if (!r.success) {
-                stage = "Could not read the request status: " + (r.error || "unknown error")
-                poll.stop()
-                return
-            }
-            var s = r.value
+        onTriggered: if (Qt.application.state === Qt.ApplicationActive) wallet.call("membership_proof_status", [requestId], function (s) {
             stage = Logic.progressLine(s.state, s.phase, s.elapsed_seconds)
             if (s.state === "done") verdictText = Logic.proofLine(s.proof)
             if (["done", "failed", "rejected", "expired", "cancelled"].indexOf(s.state) >= 0) poll.stop()
+        }, function (r) {
+            stage = "Could not read the request status: " + (r.error || "unknown error")
+            poll.stop()
         })
     }
 

@@ -3,6 +3,8 @@
 // engine can run (no BigInt, no TextEncoder, no crypto: bytes are plain arrays of numbers,
 // as the Names Wallet's Testimonial app does). Times are Numbers (exact below 2^53 ms).
 // Pinned to crates/gate_core by vectors/gate-vectors.json (miniapp/test/logic.test.mjs).
+// Wallet plumbing (find/connect/open Names, busy retry) is not here: Main.qml uses the copied
+// Names Wallet SDK (./NamesWallet.qml and ./NamesWalletSDK.mjs) for that.
 
 export var QUANT_MS = 600000
 export var TTL_MS = [3600000, 21600000, 86400000]
