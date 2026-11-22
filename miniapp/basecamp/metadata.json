@@ -8,6 +8,7 @@
   "description": "LP-0001 token-gating reference app: prove you hold an NFT of a collection without showing which NFT or which account. Uses the Names Wallet SDK to find the wallet and only the membership-proof capability; never asks for account access. SKELETON, not built or published.",
   "main": "members_door_ui_plugin",
   "view": "qml/Main.qml",
+  "icon": "src/icons/icon.png",
   "dependencies": [{ "name": "names", "version": ">=0.18.0" }],
   "provides": [],
   "uses": [{ "intent": "basecamp.apps.launch" }]
