@@ -117,7 +117,7 @@ export LP0001_GATE=$(hex_of "$GATE") LP0001_NFT_PROGRAM LP0001_COLLECTION=$(hex_
        LP0001_ZONE_ID=$ZONE
 build_guest "$WORKSPACE/guests/consumer" lp0001-consumer.bin
 CONSUMER=$(deploy "$B/lp0001-consumer.bin")
-export LP0001_T4_REAL_NFT_PROGRAM="$LP0001_NFT_PROGRAM" \
+export LP0001_T4_REAL_NFT="$LP0001_NFT_PROGRAM" \
        LP0001_T4_ATTACKER=$(hex_of "$(acct atk)") LP0001_T4_COLLECTION="$LP0001_COLLECTION"
 build_guest "$WORKSPACE/tests-only/hostile-guest" lp0001-t4-hostile.bin
 HOSTILE=$(deploy "$B/lp0001-t4-hostile.bin")
