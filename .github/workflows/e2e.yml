@@ -61,7 +61,7 @@ jobs:
           path: ~/lez-seq
           key: lez-seq-standalone-${{ env.LEZ_COMMIT }}
 
-      - name: Install the SPEL CLI (pinned revision: actor-model deploy and program-id)
+      - name: "Install the SPEL CLI (pinned revision: actor-model deploy and program-id)"
         run: |
           cargo install --locked --git "$SPEL_REPO" --rev "$SPEL_REV" spel-cli
           spel --help > /dev/null
@@ -75,7 +75,7 @@ jobs:
       - name: Build gate-cli
         run: |
           cargo build --release --manifest-path client/Cargo.toml
-          cp target/release/gate-cli "$RUNNER_TEMP/gate-cli"
+          cp client/target/release/gate-cli "$RUNNER_TEMP/gate-cli"
 
       - name: On-chain tests (fresh local chain, development receipts)
         env:
