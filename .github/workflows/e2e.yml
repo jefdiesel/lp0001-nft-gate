@@ -93,6 +93,12 @@ jobs:
       - name: Logs
         if: always()
         run: |
-          cat "$RUNNER_TEMP/lp0001-e2e/run/RESULTS.txt" || true
-          tail -200 "$RUNNER_TEMP/lp0001-e2e/run/log.txt" || true
-          tail -200 "$RUNNER_TEMP/lp0001-e2e/sequencer.log" || true
+          if [ -f "$RUNNER_TEMP/lp0001-e2e/gate/run/RESULTS.txt" ]; then
+            cat "$RUNNER_TEMP/lp0001-e2e/gate/run/RESULTS.txt"
+          fi
+          if [ -f "$RUNNER_TEMP/lp0001-e2e/setup.log" ]; then
+            tail -200 "$RUNNER_TEMP/lp0001-e2e/setup.log"
+          fi
+          if [ -f "$RUNNER_TEMP/lp0001-e2e/sequencer.log" ]; then
+            tail -200 "$RUNNER_TEMP/lp0001-e2e/sequencer.log"
+          fi
