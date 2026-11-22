@@ -10,8 +10,8 @@ set -uo pipefail
 for v in SEQ_BIN LOCAL_JSON CLI SPEL NFT_SRC RPC WORKSPACE E2E_DIR; do
   [ -n "${!v:-}" ] || { echo "ci-run: $v is required" >&2; exit 2; }
 done
-PAYER_PRIVATE_KEY=${PAYER_PRIVATE_KEY:-10a26a9aec7d34b82364eeae45c5294dbb0a764b000b94eeb9b58511dc487c4d}
-GAS_SSK=${GAS_SSK:-5d0dbef0fa216cc3b028903d041c3a7035a12aee9b1b17b0d0790fe5a5b4638f}
+PAYER_PRIVATE_KEY=${PAYER_PRIVATE_KEY:-$("$(dirname "${BASH_SOURCE[0]}")/../../tools/lez-test-key.sh" PRIVATE_KEY_PUB_ACC_A)} || exit 1
+GAS_SSK=${GAS_SSK:-$("$(dirname "${BASH_SOURCE[0]}")/../../tools/lez-test-key.sh" SSK_PRIV_ACC_A)} || exit 1
 SUBMISSION=lp0001-gate/draft-ci-submission
 NFT_BASE58=CjrUpegdA1RjqDN43T8P19kAkwnD1quAkNkER8k3dw9G
 
