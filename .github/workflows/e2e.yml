@@ -64,7 +64,7 @@ jobs:
       - name: "Install the SPEL CLI (pinned revision: actor-model deploy and program-id)"
         run: |
           cargo install --locked --git "$SPEL_REPO" --rev "$SPEL_REV" spel
-          spel --help > /dev/null
+          command -v spel   # its --help prints usage and exits 1
 
       - name: Fetch the reference NFT program source (pinned revision)
         run: |
