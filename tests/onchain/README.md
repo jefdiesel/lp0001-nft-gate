@@ -16,7 +16,10 @@ the same time where the old lock used to serialize them.
 | `LP0001_SPEL` | The `spel` CLI binary (`deploy`, `program-id`). Exported as `SPEL`. |
 | `LP0001_PACKAGER` | The `risc0-packager` binary used by the guest-build scripts. Exported as `PACK`. |
 | `LP0001_SEQ_RPC` | JSON-RPC URL of the chain under test. Exported as `RPC` and `GATE_CLI_SEQUENCER`. |
-| `LP0001_R0VM` | `r0vm` binary for local simulation; required only in the default dev-receipt mode. Exported as `RISC0_SERVER_PATH`. |
+| `LP0001_R0VM` | `r0vm` binary for local simulation; required only in dev-receipt mode without `LP0001_IN_PROCESS=1`. Exported as `RISC0_SERVER_PATH`. |
+
+Where there is no r0vm, set `LP0001_IN_PROCESS=1` and `LP0001_CLI` to a `gate-cli-prove` binary:
+dev receipts, with the executor inside gate-cli. Every other binary that simulates needs `lee/prove` too.
 
 Optional: `LP0001_CLI` (default `$G/out/gate-cli`), `LP0001_NFT` (reference NFT program id),
 `LP0001_EXTRA_PATH` (extra PATH entries, e.g. a Homebrew bin dir).

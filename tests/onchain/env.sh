@@ -38,6 +38,13 @@ if [ "${LP0001_REAL_PROVING:-0}" = 1 ]; then
   export RISC0_PROVER=local RAYON_NUM_THREADS=4
   case $CLI in *gate-cli-prove) ;; *) echo "STOP: real proving needs gate-cli-prove, not $CLI"; exit 1 ;; esac
   [ -x "$CLI" ] || { echo "STOP: $CLI missing (90-build-cli-prove.sh)"; exit 1; }
+elif [ "${LP0001_IN_PROCESS:-0}" = 1 ]; then
+  # Development receipts with no r0vm: gate-cli built with `prove` runs the executor in this
+  # process, and with RISC0_DEV_MODE=1 its local prover only makes development receipts.
+  unset RISC0_SERVER_PATH
+  export RISC0_DEV_MODE=1 RISC0_PROVER=local RISC0_EXECUTOR=local RAYON_NUM_THREADS=4
+  case $CLI in *gate-cli-prove) ;; *) echo "STOP: LP0001_IN_PROCESS needs gate-cli-prove, not $CLI"; exit 1 ;; esac
+  [ -x "$CLI" ] || { echo "STOP: $CLI missing (90-build-cli-prove.sh)"; exit 1; }
 else
   : "${LP0001_R0VM:?set LP0001_R0VM to the r0vm binary used for local simulation}"
   export RISC0_DEV_MODE=1
