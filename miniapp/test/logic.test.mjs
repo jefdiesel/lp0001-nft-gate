@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describeVerdict, progressLine, PendingGuard, gatedFromAct, bothWays, parseProofObject, newNonce } from '../web/logic.mjs';
-import * as Q from '../basecamp/src/qml/logic.mjs';
+import * as Q from '../basecamp/qml/logic.mjs';
 import * as g from '../../js/gate-verify/src/core.mjs';
 
 const V = JSON.parse(readFileSync(new URL('../../vectors/gate-vectors.json', import.meta.url)));

@@ -19,23 +19,23 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 6 | On-chain verification | Reference consumer `crates/consumer_program/src/lib.rs:91-146`, deployed on **our rc3 chain** (consumer `5iWMJaM6…8PRN`, gate `GcLMvbvt…nRTB`); run `rc3/E2E-rc3.sh` (log `run/E2E/log.txt` on the Mini): actA's Act `37cb802f…` applied in block 39885 reading the gate PDA (nonce 0 -> 1), actB's Act refused BINDING_MISMATCH, a second Act refused BINDING_MISMATCH, an empty slot NO_FACT, `verify --tx-hash` OK | MET on our rc3 chain (T08's late-Act leg not run: needs a second real proof) | READ |
 | 7 | Off-chain verification + library + docs | `verify:219` Rust, `js:64` JS, shared `gate_core::check` (`core:535-560`); README `js/gate-verify/README.md:22-36` | MET | READ |
 | 8 | Replay resistance across contexts | Binding over collection + context (`core:162-164`); tests `properties.rs:103-149` and T07/T08 | MET | READ |
-| 9 | Proof via SDK with approval prompt | Shim request/status (`shim:118-160`); wallet request + sheet (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1356`, `:1328`) | MET | READ |
+| 9 | Proof via SDK with approval prompt | Shim request/status (`shim:118-160`); wallet request + sheet (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1356`, `:1328`); production wallet client is `NoGateClient` (`GATE_NOT_PINNED`) | PARTLY — not met end to end until Names itself makes a proof | READ |
 | 10 | Proof request stands alone | Shim request body has no account/audience (`shim:52-70`, test `js/wallet-shim/test/membership.test.mjs:28`) | PARTLY — wallet grant not here | READ |
-| 11 | Token-gating mini-app, both consumptions, submission id | `miniapp/web/{index.html,app.mjs,logic.mjs}`, `miniapp/basecamp/` skeleton; `Gated` carries `SUBMISSION_ID` (`gate_interface:87-96`, consumer `:125-140`) | PARTLY — deployed nowhere yet | READ |
-| 12 | Testnet 0.4 end-to-end | **Our public rc3 chain** (lez.nameswallet.app, real receipts), 2026-11-20: collection, private holding and copy (3 real proofs), one real membership Prove (tx `e40570f3…`, block 39883), consumer Act, re-check; `tests/onchain/rc3/` | MET on our rc3 chain; not on the official testnet 0.4 (row 33) | READ |
+| 11 | Token-gating mini-app, both consumptions, submission id | `miniapp/web/{index.html,app.mjs,logic.mjs}`, `miniapp/basecamp/` package; `Gated` carries `SUBMISSION_ID` (`gate_interface:87-96`, consumer `:125-140`) | PARTLY — deployed nowhere yet | READ |
+| 12 | Testnet 0.4 end-to-end | **Our public rc3 chain** (lez.nameswallet.app, real receipts), 2026-11-20 through `gate-cli`: collection, private holding and copy (3 real proofs), one real membership Prove (tx `e40570f3…`, block 39883), consumer Act, re-check; `tests/onchain/rc3/` | PARTLY — ran on our rc3 chain through `gate-cli`, not end to end through Names Wallet, and not on Logos testnet 0.4 (row 33) | READ |
 
 ## Usability
 
 | # | Requirement | Evidence | Status | Mark |
 |---|---|---|---|---|
 | 13 | Module/SDK usable by other modules and dApps, additive | Wallet provider NFT + proof capabilities (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:32-33`, `lib.rs:1348-1356`); shim (`shim:118-160`) | MET | READ |
-| 14 | Basecamp GUI + CLI cover NFT holdings/transfers/proof | Wallet Collectibles GUI and approval sheets (`names-wallet:basecamp/qml/Main.qml:7525-7543`), CLI (`client/src/main.rs`: `nft`, `prove`, `act`, `verify`) | MET (code); not deployed | READ |
+| 14 | Basecamp GUI + CLI cover NFT holdings/transfers/proof | Wallet Collectibles GUI and approval sheets (`names-wallet:basecamp/qml/Main.qml:7525-7543`), CLI (`client/src/main.rs`: `nft`, `prove`, `act`, `verify`) | PARTLY — CLI proves; Basecamp GUI proof path not met end to end until Names makes a proof (`NoGateClient` → `GATE_NOT_PINNED`) | READ |
 | 15 | Module catalog forked and published | No catalog files or `logos-repo.json` in this repo | NOT MET | READ |
 | 16 | NFT-transfer approval prompts name dApp/account/collection/asset | Wallet NFT sheet names the dApp, account, collection and asset (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1302-1317`, `Main.qml:7758-7763`) | MET | READ |
-| 17 | Proof prompt distinct, states disclosures, separate approval | Proof request approved on its own sheet, not with transfers (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:531`, `lib.rs:1328`) | MET | READ |
+| 17 | Proof prompt distinct, states disclosures, separate approval | Proof request approved on its own sheet, not with transfers (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:531`, `lib.rs:1328`) | PARTLY — separate sheet in code, not met end to end until Names itself makes a proof | READ |
 | 18 | Per-dApp capabilities legible and revocable | Per-app grants `nft_list`/`nft_transfers`/`membership_proof`, individually revocable (`names-wallet:basecamp-module/rust-lib/src/lib.rs:1320-1325`, `provider_nft.rs:577`) | MET | READ |
-| 19 | Program source verification in approval prompt | Approval shows Program Registry verification (`names-wallet:basecamp/qml/Main.qml:9423`, `:11138`); client pre-check (`client/src/main.rs:393-401`) | MET | READ |
-| 20 | UX quality, non-expert | `miniapp/basecamp/src/qml/Main.qml` now shows immediate button feedback, capped `busy` retries, plain empty/error states and plain progress; `miniapp/test/ux.test.mjs` checks the text helpers (11/11 node tests pass). QML layout itself is not unit-tested; no deployed app | MET (code + tests); QML runner and deployment pending | READ |
+| 19 | Program source verification in approval prompt | Approval shows Program Registry verification (`names-wallet:basecamp/qml/Main.qml:9423`, `:11138`); client pre-check (`client/src/main.rs:393-401`) | PARTLY — shown in code and CLI pre-check, not met end to end until Names itself makes a proof | READ |
+| 20 | UX quality, non-expert | `miniapp/basecamp/qml/Main.qml` and `miniapp/basecamp/qml/logic.mjs` show immediate button feedback, plain status/error states against Names 0.18.3's contract, and privacy disclosures; `miniapp/test/ux.test.mjs` checks the JS helpers and static QML rules against wallet fixtures. Screen has never run against Names Wallet; no QML render test or deployed app | PARTLY — screen has never run against Names Wallet; QML runner and deployment pending | READ |
 | 21 | Integration guide, SDK + proof + gating | `docs/INTEGRATION-GUIDE.md`: show/send/receive/claim-deed/private-proof with runnable snippets and fixture outputs, from the wallet Provider SDK, `js/gate-verify` and `logos-sdk-js`; plus `js/gate-verify/README.md`, `docs/WALLET-INTEGRATION.md` | MET (docs); deployment pending | READ |
 
 ## Reliability
@@ -44,10 +44,10 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 |---|---|---|---|---|
 | 22 | Clear proof-failure errors | `client/src/main.rs` maps refusals via `gate_wallet_rules::classify` (`gate_wallet_rules/src/lib.rs:75-96`) | MET | READ |
 | 23 | Deterministic invalid-proof outcomes; two verifiers agree | One `gate_core::check` (`core:535-560`), shared vectors `vectors/*.json`, T10 | MET | READ |
-| 24 | No proof / no private enumeration without explicit approval | Per-app capability checks before NFT/proof requests (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:32-33`, `:165`, `:531`); shim refuses caller fields (`shim:52-70`) | MET | READ |
-| 25 | Privacy property + stated assumptions | `docs/DESIGN.md:103-108`, spec §6, `js/gate-verify/README.md:7-20` | MET (write-up), not proven on real receipts | READ |
+| 24 | No proof / no private enumeration without explicit approval | Per-app capability checks before NFT/proof requests (`names-wallet:basecamp-module/rust-lib/src/provider_nft.rs:32-33`, `:165`, `:531`); shim refuses caller fields (`shim:52-70`) | PARTLY — capability checks in code, not met end to end until Names itself makes a proof | READ |
+| 25 | Privacy property + stated assumptions | `docs/DESIGN.md:103-108`, spec §6, `js/gate-verify/README.md:7-20` | PARTLY — write-up exists; chain privacy/linkability tests unrun (T11 not run) | READ |
 | 26 | Private transfers unlinkable | Job A observation `docs/lp0001/LP0001-JOB-A-FINDINGS.md` §8b.3 (development receipts) | PARTLY — dev receipts only | READ |
-| 27 | Proof freshness and invalidation | TTL menu + window (`core:30-36`, `gate:152-166`), one slot overwrite (`gate:198-211`), T07 | MET in logic; chain tests unrun | READ |
+| 27 | Proof freshness and invalidation | TTL menu + window (`core:30-36`, `gate:152-166`), one slot overwrite (`gate:198-211`), T07 | PARTLY — met in logic; chain tests (T06, T07, T08 late use) unrun | READ |
 | 28 | State survives restarts; no mandatory external services; Logos Storage | Gate state on chain; no Logos Storage client in this repo | PARTLY | READ |
 | 29 | Centralised media fetching optional/disableable | Per-card image fetch needs an explicit tick (`names-wallet:basecamp/qml/Main.qml:7540-7542`, `:10971-10976`) | MET | READ |
 | 30 | Large metadata/media on Logos Storage | `crates/storage_client`: upload → CID, fetch via `/network/stream`, `verify_media` by `mediaSha256`; offline tests against a fake that answers like the real node (API shape checked on a real Logos Storage node 2026-11-20). Not yet used by an NFT mint/metadata flow | PARTLY | READ |
@@ -67,7 +67,7 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 | 34 | mkLogosModule build | No flake/module-builder config here | NOT MET | READ |
 | 35 | Linux/macOS/Windows/Android | CI matrix Linux + macOS; Windows and Android not covered | PARTLY | READ |
 | 36 | e2e tests against real sequencer in CI | Unit CI now exists (`.github/workflows/ci.yml`: `cargo test --workspace`, `node --test` in the three JS dirs); chain e2e still not in CI | PARTLY | READ |
-| 37 | Reproducible demo script with real proving | `RUN-AFTER-3AM.txt` (ordered commands), `tests/onchain/91-real-proof.sh` guarded | PARTLY — real proving never run | READ |
+| 37 | Reproducible demo script with real proving | `RUN-AFTER-3AM.txt` (ordered commands), `tests/onchain/91-real-proof.sh`, `tests/onchain/rc3/E2E-rc3.sh` (one real membership proof and on-chain Act ran on our rc3 chain 2026-11-20 through `gate-cli`) | PARTLY — real proof ran once on our rc3 chain via `gate-cli` (2026-11-20); not yet end to end through Names Wallet or on Logos testnet 0.4 | READ |
 | 38 | README setup/NFT/proof/media/fetching | `README.md` (setup, layout, trust and on-chain checks, new "NFT media and metadata" section at :54), verifier README | MET | READ |
 | 39 | SDK docs mini-app worked example + capabilities | `js/gate-verify/README.md`, `docs/WALLET-INTEGRATION.md` | MET (docs) | READ |
 
@@ -85,7 +85,10 @@ Prize text: `LP-0001.md` master (lines as in the briefing). Source labels: gate 
 
 ## Summary
 
-MET: 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 25, 27, 29, 31, 32, 38, 39 (6, 12, 31, 32 on our rc3 chain).
-The largest gaps are deployments, real proving, module catalog/CI, the wallet-side UX, and all
-adoption. This map was written from this repo, the Names Wallet worktree and the prize text; no
-chain or upstream issue was inspected for it.
+MET: 1, 2, 3, 4, 5, 6, 7, 8, 13, 16, 18, 21, 22, 23, 29, 31, 32, 38, 39 (6, 31, 32 on our rc3 chain).
+Rows 9, 12, 14, 17, 19 and 24 are PARTLY until Names Wallet replaces `NoGateClient` and makes a real
+proof end to end; rows 25 and 27 are PARTLY while their chain tests stay unrun; row 37 now reflects
+the 2026-11-20 real proof on our rc3 chain via `gate-cli`. The largest gaps are wiring the gate
+client into Names Wallet, running the unrun chain tests, Logos testnet 0.4 deployments, module
+catalog/chain CI, and all adoption. This map was written from this repo, the Names Wallet worktree
+and the prize text; no chain or upstream issue was inspected for it.

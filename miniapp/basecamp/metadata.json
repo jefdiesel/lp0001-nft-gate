@@ -1,15 +1,35 @@
 {
   "name": "members_door_ui",
   "display_name": "Members' door",
+  "author": "lns:names",
   "version": "0.1.0",
   "type": "ui_qml",
-  "interface": "universal",
   "category": "social",
-  "description": "LP-0001 token-gating reference app: prove you hold an NFT of a collection without showing which NFT or which account. Uses the Names Wallet SDK to find the wallet and only the membership-proof capability; never asks for account access. SKELETON, not built or published.",
-  "main": "members_door_ui_plugin",
+  "description": "Prove you hold an NFT of a collection without showing which NFT or which account; uses your Names Wallet with no account access (testnet only)",
   "view": "qml/Main.qml",
-  "icon": "src/icons/icon.png",
-  "dependencies": [{ "name": "names", "version": ">=0.18.0" }],
+  "icon": "src/icons/icon.svg",
+  "dependencies": [
+    {
+      "name": "names",
+      "version": ">=0.18.0"
+    }
+  ],
   "provides": [],
-  "uses": [{ "intent": "basecamp.apps.launch" }]
+  "uses": [
+    { "intent": "basecamp.apps.launch" },
+    { "intent": "names.open" }
+  ],
+  "nix": {
+    "packages": {
+      "build": [],
+      "runtime": []
+    },
+    "external_libraries": [],
+    "cmake": {
+      "find_packages": [],
+      "extra_sources": [],
+      "extra_include_dirs": [],
+      "extra_link_libraries": []
+    }
+  }
 }
